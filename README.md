@@ -1,8 +1,8 @@
-# [project name]
+# Forgetsy
 
-TODO
+A web platform to ease the use of the [Vision Unlearning](https://github.com/LeonardoSanBenitez/vision-unlearning) library.
 
-## Getting started
+# Getting started
 
 Local file `.env` is required.
 
