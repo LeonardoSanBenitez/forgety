@@ -2,6 +2,7 @@ data/
 assets/
 models/
 !/**/.gitkeep
+*.sif
 
 # Prompt flow
 .promptflow
