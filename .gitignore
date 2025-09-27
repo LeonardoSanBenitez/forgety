@@ -3,6 +3,8 @@ assets/
 models/
 !/**/.gitkeep
 *.sif
+infra/request_*
+infra/run_batch_*
 
 # Prompt flow
 .promptflow
