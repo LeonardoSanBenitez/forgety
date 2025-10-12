@@ -1,0 +1,33 @@
+services:
+  backend:
+    container_name: platform-backend
+    build: 
+      context: .
+      dockerfile: ./services/backend/Dockerfile
+    command: ["/bin/sh", "-c", "service ssh start && exec uvicorn app.main:app --host 0.0.0.0 --port 80 --reload"]
+    volumes:
+      - ./services/backend/app:/src/app
+      - ./libs:/src/libs
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/src
+    ports:
+      - 8001:80
+      - 2222:22
+
+  frontend:
+    container_name: platform-frontend
+    build: 
+      context: .
+      dockerfile: ./services/frontend/Dockerfile
+    command: ["streamlit", "run", "app/main.py", "--server.port=80", "--server.address=0.0.0.0"]
+    volumes:
+      - ./services/frontend/app:/src/app
+      - ./libs:/src/libs
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/src
+    ports:
+      - 8501:80

@@ -1,0 +1,3 @@
+altair
+pandas~=2.2
+streamlit

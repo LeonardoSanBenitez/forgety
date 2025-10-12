@@ -1,0 +1,7 @@
+# This requirements are only needed during development
+python-dotenv~=1.0
+mypy~=1.12
+pycodestyle~=2.12
+pytest
+pytest-asyncio~=0.24.0
+httpx

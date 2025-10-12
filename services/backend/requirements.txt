@@ -1,0 +1,5 @@
+uvicorn[standard]
+gunicorn
+fastapi
+pydantic
+python-multipart
