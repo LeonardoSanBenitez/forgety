@@ -13,15 +13,6 @@ mypy = "~1.12"
 pycodestyle = "~2.12"
 pytest-asyncio = "^0.24.0"
 
-# Only needed for sparseperf
-auto_gptq = "~0.7"
-lm-eval = "*"
-datasets = "*"
-accelerate = "*"
-sentencepiece = "*"
-protobuf = "*"
-optimum = {version = "*", optional = true, extras = ["--no-deps"]}
-
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
