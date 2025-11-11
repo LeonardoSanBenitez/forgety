@@ -8,6 +8,7 @@ services:
     volumes:
       - ./services/backend/app:/src/app
       - ./libs:/src/libs
+      - ./tests:/tests
     env_file:
       - .env
     environment:

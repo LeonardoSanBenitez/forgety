@@ -19,10 +19,10 @@ stop-local:
 test: run-local
 	echo "\n\n-------\nMypy checks\n-------"
 	#mypy --install-types --non-interactive --exclude "./services" .
-	docker compose exec notebooks mypy ./libs --no-warn-incomplete-stub --disable-error-code import-untyped --explicit-package-bases --install-types --non-interactive
+	docker compose exec backend mypy /src/libs --no-warn-incomplete-stub --disable-error-code import-untyped --explicit-package-bases --install-types --non-interactive
 
 	echo "\n\n-------\nPycodestyle checks\n-------"
-	docker compose exec notebooks pycodestyle --exclude='.venv,docs,.runs' --max-line-length=200 --ignore='E121,E123,E126,E226,E24,E251,E704,W503,W504,E225,E226,E252,W605,E721,E731' ./libs
+	docker compose exec backend pycodestyle --exclude='.venv,docs,.runs' --max-line-length=200 --ignore='E121,E123,E126,E226,E24,E251,E704,W503,W504,E225,E226,E252,W605,E721,E731' /src/libs
 
 	echo "\n\n-------\nPytest checks\n-------"
-	docker compose exec notebooks python3 -m pytest tests
+	docker compose exec backend python3 -m pytest /tests

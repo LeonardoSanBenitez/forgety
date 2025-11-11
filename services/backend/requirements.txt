@@ -3,3 +3,10 @@ gunicorn
 fastapi
 pydantic
 python-multipart
+
+mypy
+pycodestyle
+pytest
+pytest-asyncio
+pytest-timeout
+pytest-xdist
