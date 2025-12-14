@@ -44,3 +44,17 @@ Our setup was tested in the PPKE's ITK HPC cluster (Esztergom) in December of 20
 * **Frontend**: Streamlit, python
 * **Backend**: FastAPI, pydantic, jsonschema, python
 * **Infrastructure and cluster integration**: SSH, bash, Slurm commands, apptainer
+
+# Architecture
+
+![sequence.png](./images/UML-diagrams-sequence.png)
+
+![component-backend.png](./images/UML-diagrams-component-backend.png)
+
+![component-frontend.png](./images/UML-diagrams-component-frontend.png)
+
+![class-database.png](./images/UML-diagrams-class-database.png)
+
+![class-infra.png](./images/UML-diagrams-class-infra.png)
+
+![class-request.png](./images/UML-diagrams-class-request.png)
