@@ -71,11 +71,10 @@ setup-cluster:
 	# It's something like:
 	# ssh -J USER@users.itk.ppke.hu USER@cl.itk.ppke.hu
 	# Check if you are in the folder /home/USER
-	# if folder TRDP-unlearning does not exist:
-	#   git clone https://github.com/LeonardoSanBenitez/TRDP-unlearning
-	#   (type your PAT, since it's private)
-	#   cd TRDP-unlearning/infra
-	#   create file .env with the secrets
+	# if folder GIT_REPOSITORY_NAME does not exist:
+	#   git clone repo
+	#   (enter password if needed)
+	#   create all necessary .env files with the secrets
 	# if folder vision-unlearning does not exist:
 	#   git clone https://github.com/LeonardoSanBenitez/vision-unlearning
 	# Then you have to push/pull code when necessary, which could also be automated
@@ -115,7 +114,7 @@ stop-one-cluster:
 
 
 debug-one-cluster:
-	# Usage: make debug-cluster job_id=<YOUR_SLURM JOB_ID> UUID=<Your UUID identifier>
+	# Usage: make debug-one-cluster job_id=<YOUR_SLURM JOB_ID> UUID=<Your UUID identifier>
 	$(call exec_cluster, "\
 		cd '${GIT_REPOSITORY_NAME}/assets/$(UUID)'; \
 		JOB_ID=$(job_id); \
@@ -136,7 +135,6 @@ debug-one-cluster:
 		else \
 			echo -e '\n\n-------\nJob output file does not exist\n-------'; \
 		fi; \
-		echo -e '\n\n-------\nJob output\n-------'; \
 	")
 
 

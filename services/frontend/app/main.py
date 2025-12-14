@@ -1,5 +1,32 @@
+from typing import List, Dict, Optional
 import streamlit as st
 import requests
+import re
+
+
+def convert_mean_to_std(name: str) -> str:
+    name = re.sub(r'\(.*?\)', '(~↓)', name)
+    name = name.replace(' mean ', ' std ')
+    return name
+
+
+def metrics_to_markdown(metrics: List[Dict[str, float]]) -> str:
+    name_to_value = {}
+    for metric in metrics:
+        name_to_value[metric['name']] = metric['value']
+
+    output: str = ""
+    for name in name_to_value:
+        if '~' in name:
+            continue
+        if (' mean ' in name) and (convert_mean_to_std(name) in name_to_value):
+            output += f"* **{name.replace(' mean', '')}**: {name_to_value[name]:.2f} ± {name_to_value[convert_mean_to_std(name)]:.1f}\n"
+        elif (' std ' in name):
+            continue
+        else:
+            output += f"* **{name}**: {name_to_value[name]:.2f}\n"
+    return output
+
 
 # Remove the "deploy" and "..." from the top
 st.markdown("""
@@ -78,7 +105,7 @@ elif st.session_state.page == "Create a request":
                                 "model_output_hf_id": model_output_hf_id,
                             },
                             files={"dataset": (dataset_file.name, dataset_file, "application/zip")} if dataset_file else None,
-                            timeout=30,
+                            timeout=180,
                         )
                     if response.status_code == 200:
                         st.success("Request sent successfully!")
@@ -100,16 +127,16 @@ elif st.session_state.page == "List requests":
             st.info("No requests found.")
         else:
             for req in requests_data:
+                metrics: Optional[List[Dict[str, float]]] = req.get("metrics", None)
+                text = f"**{req['experiment_name']}** - {req['model_base_name']}\n\n"
+                text += f"Concept to Forget: {req.get('concept_forget', 'N/A')}\n\n"
+                text += f"Concept to Overwrite: {req.get('concept_overwrite', 'N/A')}\n\n"
+                text += f"Concept to Retain: {req.get('concept_retain', 'N/A')}\n\n"
+                text += f"Unlearning Algorithm: {req['unlearning_algorithm']}\n\n"
+                text += f"Model Output HF ID: {req['model_output_hf_id']}\n\n"
+                text += f"Status: {req.get('status', 'N/A')}\n\n"
+                if metrics:
+                    text += f"Metrics: \n{metrics_to_markdown(metrics)}\n\n"
                 with st.container():
-                    st.markdown(
-                        f"**{req['experiment_name']}** - {req['model_base_name']}\n\n"
-                        f"Concept to Forget: {req.get('concept_forget', 'N/A')}\n\n"
-                        f"Concept to Overwrite: {req.get('concept_overwrite', 'N/A')}\n\n"
-                        f"Concept to Retain: {req.get('concept_retain', 'N/A')}\n\n"
-                        f"Unlearning Algorithm: {req['unlearning_algorithm']}\n\n"
-                        f"Model Output HF ID: {req['model_output_hf_id']}\n\n"
-                        f"Status: {req.get('status', 'N/A')}\n\n"
-                        f"Metrics: {req.get('metrics', 'N/A')}\n\n",
-                        help="Some extra info, whatever..."
-                    )
+                    st.markdown(text, help="Some extra info...")
                     st.markdown("---")

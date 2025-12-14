@@ -31,10 +31,8 @@ class DatabaseLocalJson(Database):
             with open(self.filepath, 'r') as f:
                 data = json.load(f)
 
-            print("????????????")
             for i, req in enumerate(data):
                 if req['uuid'] == uuid:
-                    print("!!!!!!!!!!!!!!!!!!!!!!", updated_request)
                     data[i].update(updated_request)
                     break
             else:

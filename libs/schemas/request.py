@@ -28,5 +28,8 @@ class RequestLaunched(RequestInferred):
 
 class RequestCompleted(RequestLaunched):
     status: Optional[Literal['SUCCEEDED', 'FAILED']] = None
+    job_details: str = ''
+    stdout: str = ''
+    stderr: str = ''
     metrics: Optional[List[dict]] = None
     credits_consumed: Optional[float] = None

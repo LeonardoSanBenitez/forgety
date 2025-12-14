@@ -62,7 +62,7 @@ def infer_request(request: Request, num_forget_images: int, num_retain_images: i
             "random_flip": True,
             
             "lora_r": 4,
-            "target_modules": ["q_proj", "k_proj", "v_proj"],
+            "target_modules": ["to_k", "to_q", "to_v", "to_out.0"],
             "lora_alpha": 4,
             "lora_dropout": 0.1,
             
@@ -98,13 +98,25 @@ def infer_request(request: Request, num_forget_images: int, num_retain_images: i
             })
     elif request.unlearning_algorithm == "UCE":
         hyperparameters = {
-            "model_name_or_path": request.model_base_name,
             "output_dir": 'model',
-            "edit_concepts": request.concept_forget,
-            "guide_concepts": "object",
-            "concept_type": "object",
-            "preserve_concepts": request.concept_retain,
             "hub_model_id": request.model_output_hf_id,
+            "final_eval_prompts_forget": [
+                f'An image of {request.concept_forget}',
+                f'Photograph of {request.concept_forget}; high definition',
+                f'An picture of {request.concept_forget} in the rain',
+            ],
+            "final_eval_prompts_retain": [
+                f'An image of {request.concept_retain}',
+                f'Photograph of {request.concept_retain}; high definition',
+                f'An picture of {request.concept_retain} in the rain',
+            ],
+            "pretrained_model_name_or_path": request.model_base_name,
+            "erase_scale": 0.4,
+            "preserve_scale": 1.0,
+            "lamb": 0.5,
+            "edit_concepts": request.concept_forget,  # example: cat
+            "preserve_concepts": request.concept_retain, # TODO: this isnt good... Example: lion; tiger; leopard
+            "expand_prompts": False,
         }
 
     return RequestInferred(**request.model_dump(), hyperparameters=hyperparameters, num_forget_images=num_forget_images, num_retain_images=num_retain_images)
