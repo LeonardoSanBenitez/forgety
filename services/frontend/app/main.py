@@ -28,13 +28,103 @@ def metrics_to_markdown(metrics: List[Dict[str, float]]) -> str:
     return output
 
 
-# Remove the "deploy" and "..." from the top
+st.set_page_config(
+    page_title="Forgety — Machine Unlearning as a Service",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
+# ------------------ CSS ------------------
 st.markdown("""
-    <style>
-    #MainMenu {visibility: hidden;}     /* Hides the '...' hamburger menu */
-    header {visibility: hidden;}        /* Hides the top bar */
-    footer {visibility: hidden;}        /* Hides 'Made with Streamlit' */
-    </style>
+<style>
+:root {
+--primary: #85BDA6;
+--primary-dark: #3E885B;
+--bg: #C0D7BB;
+--card: #BEDCFE;
+--text: #494c52;
+--muted: #C0D7BB;
+}
+
+html, body, [data-testid="stAppViewContainer"] {
+background-color: var(--bg);
+color: var(--text);
+}
+
+section {
+padding: 5rem 0;
+}
+
+h1, h2, h3 {
+color: var(--text);
+}
+
+.hero {
+padding: 6rem 2rem;
+background: radial-gradient(circle at top, #2D6242, #3A7E55);
+border-radius: 12px;
+}
+
+.hero h1 {
+font-size: 3rem;
+margin-bottom: 1rem;
+}
+
+.hero span {
+color: var(--primary);
+}
+
+.hero p {
+color: var(--muted);
+font-size: 1.1rem;
+max-width: 700px;
+}
+
+.btn {
+display: inline-block;
+padding: 0.75rem 1.5rem;
+border-radius: 8px;
+font-weight: 600;
+margin-right: 1rem;
+}
+
+.btn-primary {
+background: var(--primary);
+color: white;
+}
+
+.btn-outline {
+border: 1px solid var(--primary);
+color: var(--primary);
+}
+
+.card {
+background: var(--card);
+padding: 1.5rem;
+border-radius: 12px;
+border: 1px solid #1f2937;
+height: 100%;
+}
+
+.cta {
+background: linear-gradient(135deg, #6a7da3, #97aad1);
+padding: 4rem 2rem;
+border-radius: 12px;
+text-align: center;
+}
+
+.stButton > button {
+background: var(--primary) !important;
+color: white !important;
+border-radius: 8px !important;
+font-weight: 600 !important;
+padding: 0.75rem 1.5rem !important;
+border: none !important;
+}
+#MainMenu {visibility: hidden;}     /* Hides the '...' hamburger menu */
+header {visibility: hidden;}        /* Hides the top bar */
+footer {visibility: hidden;}        /* Hides 'Made with Streamlit' */
+</style>
 """, unsafe_allow_html=True)
 
 # --- Navigation setup ---
@@ -54,8 +144,85 @@ st.markdown("---")
 
 # --- Page: Home ---
 if st.session_state.page == "Home":
-    st.title("Home")
-    st.write("Hi")
+    # ------------------ HERO ------------------
+    st.markdown("""
+    <div class="hero">
+    <h1>Machine Unlearning <br><span>as a Service</span></h1>
+    <p>
+        Remove unwanted data, concepts, or identities from AI models —
+        securely, efficiently, and without retraining from scratch.
+    </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<br><br>", unsafe_allow_html=True)
+
+    # ------------------ FEATURES ------------------
+    st.markdown("## Why Forgety?")
+    col1, col2, col3, col4 = st.columns(4)
+
+    features = [
+        ("Fast & Efficient", "Selective unlearning without full retraining."),
+        ("Regulation-Ready", "Designed for GDPR and right-to-be-forgotten."),
+        ("Performance Preserving", "Retention examples maintain quality."),
+        ("GPU-Powered", "Runs on our managed GPU infrastructure."),
+    ]
+
+    for col, (title, desc) in zip([col1, col2, col3, col4], features):
+        with col:
+            st.markdown(f"""
+            <div class="card">
+                <h3>{title}</h3>
+                <p>{desc}</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("<br><br>", unsafe_allow_html=True)
+
+    # ------------------ HOW IT WORKS ------------------
+    st.markdown("## How It Works")
+
+    st.markdown("""
+    <ol>
+    <li>Upload your model and data to forget</li>
+    <li>Apply LoRA-based FADE and UCE unlearning</li>
+    <li>Validate performance and compliance</li>
+    <li>Deploy your updated model</li>
+    </ol>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<br><br>", unsafe_allow_html=True)
+
+    # ------------------ USE CASES ------------------
+    st.markdown("## Use Cases")
+    uc1, uc2, uc3, uc4 = st.columns(4)
+
+    use_cases = [
+        ("GDPR Compliance", "Erase personal data safely."),
+        ("Brand Safety", "Remove misaligned brand concepts."),
+        ("Copyright Protection", "Unlearn protected styles."),
+        ("Model Refinement", "Adapt to evolving requirements."),
+    ]
+
+    for col, (title, desc) in zip([uc1, uc2, uc3, uc4], use_cases):
+        with col:
+            st.markdown(f"""
+            <div class="card">
+                <h3>{title}</h3>
+                <p>{desc}</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("<br><br>", unsafe_allow_html=True)
+
+    # ------------------ CTA ------------------
+    st.markdown("""
+    <div id="contact" class="cta">
+    <h2>Start Unlearning Today</h2>
+    <p>A future-proof solution for companies relying on foundation models.</p>
+    <br>
+    </div>
+    """, unsafe_allow_html=True)
 
 # --- Page: Create a request ---
 elif st.session_state.page == "Create a request":
