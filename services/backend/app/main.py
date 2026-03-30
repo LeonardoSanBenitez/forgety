@@ -3,8 +3,11 @@ import shutil
 import os
 import subprocess
 import time
+import matplotlib.pyplot as plt
 from fastapi import FastAPI, Form, File, UploadFile, HTTPException
 from libs import Request, RequestInferred, RequestLaunched, RequestCompleted, DatabaseLocalJson, InfraSlurm, infer_request
+import io
+from fastapi.responses import StreamingResponse
 
 
 app = FastAPI(debug=True)
@@ -109,7 +112,57 @@ async def create_request(
 
     return identifier
 
+@app.post("/v1/public-api-compute-rt")
+async def compute_rt(template: str = Form(...), params: dict = Form(...)):
+    """
+    Compute and return a graph image for a RT.
+    """
 
+    # Generate fake data
+    x = [1, 2, 3, 4, 5]
+    y = [10, 24, 36, 18, 42]
+    
+    # Create plot
+    plt.figure(figsize=(8, 6))
+    plt.plot(x, y, marker='o')
+    plt.title(f"Results")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.grid(True)
+    
+    # Save to bytes
+    img_buffer = io.BytesIO()
+    plt.savefig(img_buffer, format='png')
+    img_buffer.seek(0)
+    plt.close()
+    
+    return StreamingResponse(img_buffer, media_type="image/png")
+
+@app.get("/v1/public-api-read-results")
+async def read_results() -> str:
+    html = """
+        <table border="1">
+            <tr>
+                <th>Customer ID</th>
+                <th>Experiment Name</th>
+                <th>Status</th>
+                <th>Model Output</th>
+            </tr>
+            <tr>
+                <td>demo-customer</td>
+                <td>Modern art generation</td>
+                <td>Running</td>
+                <td>demo-customer/modern-art</td>
+            </tr>
+            <tr>
+                <td>demo-customer</td>
+                <td>Prehistoric painting</td>
+                <td>Completed</td>
+                <td>demo-customer/prehistoric-art</td>
+            </tr>
+        </table>
+    """
+    return html
 
 @app.post("/v1/test-launch")
 async def test_launch() -> str:

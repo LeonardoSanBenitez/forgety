@@ -1,0 +1,41 @@
+@startuml
+
+skinparam componentStyle rectangle
+
+package "Frontend Components" {
+
+  [Home Page] as Home
+  [Create request] as CreateReq
+  [List requests] as ListReq
+  [Explore results] as Results
+  [Compute RT] as ComputeRT
+  [Utility functions] as Utils
+
+}
+
+[Streamlit Frontend] as Streamlit
+[Backend Service] as Backend
+
+note right of Streamlit
+Main Streamlit app with session-based navigation.
+Handles user input, validation, and API calls.
+end note
+
+note right of Backend
+External FastAPI backend service.
+Provides request creation and retrieval endpoints.
+end note
+
+Streamlit --> Home : renders
+Streamlit --> CreateReq : renders
+Streamlit --> ListReq : renders
+Streamlit --> Results : renders
+Streamlit --> ComputeRT : renders
+Streamlit --> Utils : uses
+
+CreateReq --> Backend : HTTPS POST\n/v1/public-api-create-request
+ListReq --> Backend : HTTPS GET\n/v1/public-api-read-requests
+Results --> Backend : HTTPS GET\n/v1/public-api-read-results
+ComputeRT --> Backend : HTTPS POST\n/v1/public-api-compute-rt
+
+@enduml
