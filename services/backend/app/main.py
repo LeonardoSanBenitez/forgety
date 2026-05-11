@@ -1,14 +1,11 @@
-from typing import List, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Any
 import shutil
 import os
 import subprocess
 import time
-import matplotlib.pyplot as plt
-from fastapi import FastAPI, Form, File, UploadFile, HTTPException
+from fastapi import FastAPI, Form, File, UploadFile, HTTPException, Body
 from libs import Request, RequestInferred, RequestLaunched, RequestCompleted, DatabaseLocalJson, InfraSlurm, infer_request
-import io
-from fastapi.responses import StreamingResponse
-
+from libs.vision_unlearning_benchmarks_I_care_TEMP import rt_name_to_class, convert_params_from_gui_to_backend, type_task, InterferencePerEntity
 
 app = FastAPI(debug=True)
 database = DatabaseLocalJson(filepath="app/database.json")
@@ -113,56 +110,24 @@ async def create_request(
     return identifier
 
 @app.post("/v1/public-api-compute-rt")
-async def compute_rt(template: str = Form(...), params: dict = Form(...)):
+async def compute_rt(template: str = Body(...), params: dict = Body(...)) -> dict:
     """
-    Compute and return a graph image for a RT.
+    Compute and return its resulting data (as returned by the compute method of the corresponding ResultTemplate subclass) as a JSON response.
     """
+    
+    rt = rt_name_to_class[template](**convert_params_from_gui_to_backend(params))
+    #print('started', flush=True)
+    data = rt.compute()
+    #print(data, flush=True)
+    return data
 
-    # Generate fake data
-    x = [1, 2, 3, 4, 5]
-    y = [10, 24, 36, 18, 42]
-    
-    # Create plot
-    plt.figure(figsize=(8, 6))
-    plt.plot(x, y, marker='o')
-    plt.title(f"Results")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.grid(True)
-    
-    # Save to bytes
-    img_buffer = io.BytesIO()
-    plt.savefig(img_buffer, format='png')
-    img_buffer.seek(0)
-    plt.close()
-    
-    return StreamingResponse(img_buffer, media_type="image/png")
 
-@app.get("/v1/public-api-read-results")
-async def read_results() -> str:
-    html = """
-        <table border="1">
-            <tr>
-                <th>Customer ID</th>
-                <th>Experiment Name</th>
-                <th>Status</th>
-                <th>Model Output</th>
-            </tr>
-            <tr>
-                <td>demo-customer</td>
-                <td>Modern art generation</td>
-                <td>Running</td>
-                <td>demo-customer/modern-art</td>
-            </tr>
-            <tr>
-                <td>demo-customer</td>
-                <td>Prehistoric painting</td>
-                <td>Completed</td>
-                <td>demo-customer/prehistoric-art</td>
-            </tr>
-        </table>
-    """
-    return html
+@app.get("/v1/public-api-read-interference-per-entity-all")
+async def read_results() -> dict:
+    data: Dict[type_task, List[Dict[str, Any]]] = {}
+    for task in list(type_task.__args__):
+        data[task] = InterferencePerEntity(task=task).compute()
+    return data
 
 @app.post("/v1/test-launch")
 async def test_launch() -> str:

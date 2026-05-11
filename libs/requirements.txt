@@ -1,2 +1,11 @@
-#vision-unlearning  # Do we need this?
 pydantic
+fastapi
+
+# vision-unlearning
+# Temp before I install vision-unlearning as a package:
+huggingface-hub >= 0.27.0
+matplotlib
+pandas
+requests
+scipy
+seaborn

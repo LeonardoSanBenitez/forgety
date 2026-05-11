@@ -7,7 +7,11 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY ./services/frontend/requirements.txt /tmp/requirements.app.txt
+COPY ./libs/requirements.txt /tmp/requirements.libs.txt
 RUN pip install --no-cache-dir --upgrade -r /tmp/requirements.app.txt
+RUN pip install --no-cache-dir --upgrade -r /tmp/requirements.libs.txt
+
+
 
 EXPOSE 80
 HEALTHCHECK CMD curl --fail http://localhost:80/_stcore/health
