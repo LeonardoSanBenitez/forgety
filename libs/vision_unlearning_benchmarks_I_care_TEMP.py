@@ -2137,6 +2137,58 @@ class ResultTemplateInterferenceMatrix(ResultTemplateMatrix):
         return data
 
 
+def jacc_metric_score(entity_1: str, entity_2: str, metadata_filtered: List[Dict[str, Any]], entity_col: str = 'name') -> float:
+    """
+    Jaccard similarity between two entities, based on their attributes.
+    Each attribute (column) contributes between 0 and 1 to the similarity
+    We do not know the types and ranges of the attributes beforehand.
+    For each attribute, both values for the two entities must be non-NaN and of the same type, otherwise we ignore that attribute (contribution 0).
+    The calculation for each attribute is as follows:
+    * If the attribute is categorical (str or bool), the contribution is 1 if the two entities have the same value for that attribute, and 0 otherwise.
+    * If the attribute is numerical, and both values are between 0 and 1, the contribution is 1 - abs(value_1 - value_2)
+    * If the attribute is numerical, and both values are between 1 and 100, the contribution is 1 - abs(value_1 - value_2) / 100
+    * else, the contribution is 0 (we do not know how to handle it, so we ignore it)
+    """
+    # Get the rows corresponding to the two entities
+    row_1 = next((row for row in metadata_filtered if row[entity_col] == entity_1), None)
+    row_2 = next((row for row in metadata_filtered if row[entity_col] == entity_2), None)
+    if row_1 is None or row_2 is None:
+        raise ValueError(f"Entities {entity_1} and/or {entity_2} not found in metadata")
+    if set(row_1.keys()) != set(row_2.keys()):
+        raise ValueError(f"Entities {entity_1} and {entity_2} must have the same attributes")
+    
+    # Calculate similarity for each attribute
+    similarity = 0.0
+    valid_attributes = 0
+    for attr in row_1.keys():
+        value_1 = row_1[attr]
+        value_2 = row_2[attr]
+
+        if pd.isna(value_1) or pd.isna(value_2) or type(value_1) != type(value_2):
+            continue  # ignore this attribute
+
+        if isinstance(value_1, (str, bool)):
+            similarity += 1.0 if value_1 == value_2 else 0.0
+            valid_attributes += 1
+        elif isinstance(value_1, (int, float)):
+            if 0 <= value_1 <= 1 and 0 <= value_2 <= 1:
+                similarity += 1 - abs(value_1 - value_2)
+                valid_attributes += 1
+            elif 1 < value_1 <= 100 and 1 < value_2 <= 100:
+                similarity += 1 - abs(value_1 - value_2) / 100
+                valid_attributes += 1
+            else:
+                continue  # ignore this attribute
+        else:
+            continue  # ignore this attribute
+    similarity = similarity / valid_attributes if valid_attributes > 0 else 0.0
+
+    # Post checks
+    assert valid_attributes > 0, f"Expected at least one valid attribute for entities {entity_1} and {entity_2}, got {valid_attributes}."
+    assert type(similarity) == float
+    assert 0 <= similarity <= 1
+    return similarity
+
 class ResultTemplateSimilarityMatrix(ResultTemplateMatrix):
     """
     *Similarities* between each possible combination of two *entities* within a *task*.
@@ -2153,6 +2205,8 @@ class ResultTemplateSimilarityMatrix(ResultTemplateMatrix):
     def _serialize_parameters(self) -> str:
         return f"{self.model}_{self.task}_{self.similarity_metric}"
 
+    def _get_partial_path_local(self):
+        return self._get_data_path_local() + '.partial'
 
     @classmethod
     def plot_make_title(cls, data: dict) -> str:
@@ -2164,22 +2218,49 @@ class ResultTemplateSimilarityMatrix(ResultTemplateMatrix):
 
 
     def _compute_from_scratch(self) -> dict:
-        raise NotImplementedError(f"Similarity matrix not found locally or in Hugging Face Hub. Please compute it first with calculate_similarity_clip")
-        # see calculate_similarity_clip
-        # Dont fotget to save only when save_outputs==true... or assert save_outputs
-        # Given the current implementation of calculate_similarity_clip, we probably assert save_outputs
-        # To keep compatible with as it was done before, it should save a json with `orient='records'` with the content of `data['result']`
+        metadata_filtered: List[Dict[str, Any]] = get_metadata_filtered(self.task)
+        labels: List[str] = [e['name'] for e in metadata_filtered]
+
+        if self.similarity_metric == 'clip':
+            # see calculate_similarity_clip
+            # Dont fotget to save only when save_outputs==true... or assert save_outputs
+            # Given the current implementation of calculate_similarity_clip, we probably assert save_outputs
+            # To keep compatible with as it was done before, it should save a json with `orient='records'` with the content of `data['result']`
+            raise NotImplementedError(f"Similarity matrix not found locally or in Hugging Face Hub. Please compute it first with calculate_similarity_clip")
+
+        elif self.similarity_metric == 'jacc':
+            # Load partial
+            # 100x100 matrix
+            if os.path.exists(self._get_partial_path_local()) and not self.recompute_if_exists:
+                df_similarities = pd.read_json(self._get_partial_path_local(), orient='records')
+                df_similarities.set_index('emitter', inplace=True)
+                assert df_similarities.index.to_list() == labels
+            else:
+                df_similarities = pd.DataFrame(index=labels, columns=labels)
+
+            # Calculate
+            for entity_emitter, row_emitter in df_similarities.iterrows():
+                print(f'Analying similarities for entity_emitter={entity_emitter}')
+                for entity_receiver in row_emitter.index:
+                    if pd.isna(df_similarities.loc[entity_emitter, entity_receiver]):  # type: ignore
+                        similarity: float = jacc_metric_score(entity_emitter, entity_receiver, metadata_filtered)
+                        df_similarities.loc[entity_emitter, entity_receiver] = similarity
+
+                # Save partial at the end of each row
+                df_similarities.reset_index(names='emitter').to_json(self._get_partial_path_local(), orient='records')
         
-        # Also, I think the current function returns a df, should be converted to List[dict]
+        # Return to be saved in its final form
         data = {
             'metadata': {
                 'RT': self.__class__.__name__,
                 'model': self.model,
                 'task': self.task,
                 self.metric_key_name: self.similarity_metric,
+                '_metric_key_name': self.metric_key_name,
             },
-            'result': df.to_dict(orient='records'),
+            'result': df_similarities.reset_index(names='emitter').to_dict(orient='records'),
         }
+        return data
 
  
 
