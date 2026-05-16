@@ -1,13 +1,24 @@
 from typing import List, Dict, Optional, Any
 import shutil
 import os
-from fastapi import FastAPI, Form, File, UploadFile, HTTPException, Body
+from fastapi import FastAPI, Form, File, UploadFile, HTTPException, Body, Depends
 from libs import Request, RequestInferred, RequestLaunched, RequestCompleted, DatabaseLocalJson, InfraSlurm, infer_request
+from libs.database.base import Database
+from libs.infra.base import Infra
 from libs.vision_unlearning_benchmarks_I_care_TEMP import rt_name_to_class, convert_params_from_gui_to_backend, type_task, InterferencePerEntity
 
 app = FastAPI(debug=True)
-database = DatabaseLocalJson(filepath="app/database.json")
-infra = InfraSlurm()
+
+_database: Database = DatabaseLocalJson(filepath="app/database.json")
+_infra: Infra = InfraSlurm()
+
+
+def get_database() -> Database:
+    return _database
+
+
+def get_infra() -> Infra:
+    return _infra
 
 
 @app.post("/v1/public-api-create-request")
@@ -21,10 +32,12 @@ async def create_request(
     unlearning_algorithm: str = Form(...),
     model_output_hf_id: str = Form(...),
     dataset: Optional[UploadFile] = File(None),
+    database: Database = Depends(get_database),
+    infra: Infra = Depends(get_infra),
 ) -> str:
     """
     Accepts experiment request + dataset zip upload.
-    Returns (status_code, message_or_id).
+    Returns request UUID.
     """
     print(
         f"Received request:\n"
@@ -128,7 +141,10 @@ async def read_results() -> dict:
 
 
 @app.post("/v1/test-launch")
-async def test_launch() -> str:
+async def test_launch(
+    database: Database = Depends(get_database),
+    infra: Infra = Depends(get_infra),
+) -> str:
     request_inferred: RequestInferred = infer_request(Request(
         customer_id="demo-customer",
         experiment_name="Test experiment",
@@ -149,20 +165,26 @@ async def test_launch() -> str:
 
 
 @app.get("/v1/test-read")
-async def test_read(uuid: str) -> str:
+async def test_read(
+    uuid: str,
+    database: Database = Depends(get_database),
+    infra: Infra = Depends(get_infra),
+) -> str:
     # Find request by UUID in the local database (uuid provided as a query parameter)
     request = database.get_request(uuid=uuid)
     if request is None:
         raise HTTPException(status_code=404, detail=f"Request {uuid} not found")
 
-    updated_request = infra.status(request)
+    updated_request = infra.status(request)  # type: ignore[arg-type]
 
     return f"Request {request.uuid} updated to {updated_request} (type {type(updated_request)})"
 
 
 @app.get("/v1/public-api-read-requests")
 async def read_incidents(
-    customer_id: str
+    customer_id: str,
+    database: Database = Depends(get_database),
+    infra: Infra = Depends(get_infra),
 ) -> List[RequestLaunched | RequestCompleted]:
     ###############################################
     # Get info about unfinished requests
@@ -171,7 +193,7 @@ async def read_incidents(
     print(f"Found {len(requests_to_update)} requests to update", flush=True)
     for request in requests_to_update:
         try:
-            updated_request = infra.status(request)
+            updated_request = infra.status(request)  # type: ignore[arg-type]
             if isinstance(updated_request, RequestCompleted):
                 database.update_request(request.uuid, updated_request.model_dump())
                 print(f"Request {request.uuid} updated to {updated_request}", flush=True)
