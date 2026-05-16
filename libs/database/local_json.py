@@ -1,16 +1,17 @@
 import json
 import threading
 import os
-from typing import List, Optional
+from typing import List, Optional, Union
 from pydantic import PrivateAttr
-from libs.schemas import RequestCompleted
+from libs.schemas import RequestLaunched, RequestCompleted
 from libs.database.base import Database
+
 
 class DatabaseLocalJson(Database):
     filepath: str
     _lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
-    def insert_request(self, request: RequestCompleted) -> None:
+    def insert_request(self, request: Union[RequestLaunched, RequestCompleted]) -> None:
         with self._lock:
             if os.path.exists(self.filepath):
                 with open(self.filepath, 'r') as f:
@@ -41,10 +42,10 @@ class DatabaseLocalJson(Database):
             with open(self.filepath, 'w') as f:
                 json.dump(data, f, indent=2)
 
-    def get_request(self, uuid: str) -> Optional[RequestCompleted]:
+    def get_request(self, uuid: str) -> Optional[Union[RequestLaunched, RequestCompleted]]:
         with self._lock:
             if not os.path.exists(self.filepath):
-                raise ValueError(f"Database file {self.filepath} does not exist.")
+                return None
 
             with open(self.filepath, 'r') as f:
                 data = json.load(f)
@@ -55,7 +56,7 @@ class DatabaseLocalJson(Database):
 
             return None
 
-    def get_requests(self) -> List[RequestCompleted]:
+    def get_requests(self) -> List[Union[RequestLaunched, RequestCompleted]]:
         with self._lock:
             if not os.path.exists(self.filepath):
                 return []
@@ -65,7 +66,7 @@ class DatabaseLocalJson(Database):
 
             return [RequestCompleted(**req) for req in data]
 
-    def get_requests_status_none(self) -> List[RequestCompleted]:
+    def get_requests_status_none(self) -> List[Union[RequestLaunched, RequestCompleted]]:
         with self._lock:
             if not os.path.exists(self.filepath):
                 return []
@@ -73,7 +74,7 @@ class DatabaseLocalJson(Database):
             with open(self.filepath, 'r') as f:
                 data = json.load(f)
 
-            result = []
+            result: List[Union[RequestLaunched, RequestCompleted]] = []
             for req in data:
                 if 'status' not in req or req['status'] is None:
                     result.append(RequestCompleted(**req))

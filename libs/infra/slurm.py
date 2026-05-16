@@ -60,7 +60,7 @@ else:
 
 logger.info(hyperparameters)
 eval_results = unlearner.train()
-logger.info('''Evaluation metrics:\n''' + pd.DataFrame([dict(Name=r.metric_name, Value=r.metric_value) for r in eval_results]).to_markdown())
+logger.info('''Evaluation metrics:\\n''' + pd.DataFrame([dict(Name=r.metric_name, Value=r.metric_value) for r in eval_results]).to_markdown())
 """
 
 _TEMPLATE_MAIN_PY_MACE = """
@@ -88,23 +88,24 @@ def execute_command(command: str, max_retries: int = 5, wait_seconds: float = 0.
     '''
     If can't, raises exception
     '''
+    last_exc: Exception = RuntimeError("max_retries must be > 0")
     for attempt in range(max_retries):
         try:
             result = subprocess.run([command], capture_output=True, text=True, shell=True, check=True, timeout=timeout_one_seconds)
             return result.stdout, result.stderr
         except Exception as e:
+            last_exc = e
             print(f"Warning: Command '{command}' failed on attempt {attempt + 1}/{max_retries} with error: {e}", flush=True)
             if attempt < max_retries - 1:
                 time.sleep(wait_seconds)
-            else:
-                raise e
+    raise last_exc
 
 
 def parse_markdown_table(stdout: str, start_anchor: str = 'Evaluation metrics:\n') -> List[Dict]:
     """
-    Extracts a markdown table starting after a specified anchor string from a 
+    Extracts a markdown table starting after a specified anchor string from a
     larger text block and returns it as a list of dictionaries.
-    
+
     The metric names will include the trailing performance indicators (e.g., (~↑)).
     """
     results = []
@@ -126,16 +127,16 @@ def parse_markdown_table(stdout: str, start_anchor: str = 'Evaluation metrics:\n
         elif table_lines:
             # Stop when the table structure is broken
             break
-            
+
     # We need at least 3 lines: header, separator, and one data row
     if len(table_lines) < 3:
         return []
 
     # 3. Process data rows (skip header and separator lines)
     data_rows = table_lines[2:]
-    
+
     for row_line in data_rows:
-        # Split the line by '|', removing the empty strings that result from 
+        # Split the line by '|', removing the empty strings that result from
         # the leading and trailing pipe characters.
         parts = [part.strip() for part in row_line.split('|') if part.strip()]
 
@@ -146,15 +147,15 @@ def parse_markdown_table(stdout: str, start_anchor: str = 'Evaluation metrics:\n
         # Parts: [0] = Index, [1] = Name, [2] = Value
         raw_name = parts[1]
         raw_value = parts[2]
-        
+
         try:
             # Name: The raw name already contains the indicator and needs no further
             # cleaning besides stripping surrounding whitespace.
             clean_name = raw_name
-            
+
             # Value: Convert to float (handles standard and scientific notation)
             value = float(raw_value)
-            
+
             results.append({
                 'name': clean_name,
                 'value': value
@@ -169,15 +170,17 @@ def parse_markdown_table(stdout: str, start_anchor: str = 'Evaluation metrics:\n
 class InfraSlurm(Infra):
     def launch(self, request: RequestInferred) -> RequestLaunched:
         identifier = request.uuid
-        request_file = f"main.py"
-        bash_script = f"run_batch_cluster.sh"
+        request_file = "main.py"
+        bash_script = "run_batch_cluster.sh"
         files_path = os.path.join("/requests", str(identifier))
         os.makedirs(files_path, exist_ok=True)
         print(f"ID: {identifier}")
 
         with open(os.path.join(files_path, request_file), "w") as f:
-            #f.write(_TEMPLATE_MAIN_PY_TEST.format(unlearning_algorithm=request.unlearning_algorithm, hyperparameters=request.hyperparameters))
-            f.write(_TEMPLATE_MAIN_PY_FADE_UCE_MUNBA.format(unlearning_algorithm=request.unlearning_algorithm, hyperparameters=request.hyperparameters))
+            f.write(_TEMPLATE_MAIN_PY_FADE_UCE_MUNBA.format(
+                unlearning_algorithm=request.unlearning_algorithm,
+                hyperparameters=request.hyperparameters,
+            ))
         print(f"Unlearning script '{request_file}' created!", flush=True)
 
         with open(os.path.join(files_path, bash_script), "w") as f:
@@ -185,16 +188,16 @@ class InfraSlurm(Infra):
         os.chmod(os.path.join(files_path, bash_script), 0o755)
         print(f"Bash script '{bash_script}' created!", flush=True)
 
-        # Just the exception being raised is not guaranteed that the command failed; We either check in the cluster or blindly proceed
+        # Just the exception being raised is not guaranteed that the command failed;
+        # we either check in the cluster or blindly proceed.
         stdout, stderr = execute_command(f"cd app; make copy-folder UUID={identifier}", timeout_one_seconds=30.)
-        #print('COPY stdout', stdout)
-        #print('COPY stderr', stderr)
 
         print(f">>>>>>>>>>>>>>> LAUNCH JOB: make run-batch-cluster UUID={identifier}", flush=True)
         stdout, stderr = execute_command(f"cd app; make run-batch-cluster UUID={identifier}", timeout_one_seconds=10.)
-        #print('RUN stdout', stdout)
-        #print('RUN stderr', stderr)
-        slurm_job_id: str = re.search(r'Submitted batch job (\d+)\n', stdout).group(1)
+        job_id_match = re.search(r'Submitted batch job (\d+)\n', stdout)
+        if job_id_match is None:
+            raise ValueError(f"Could not parse Slurm job ID from output: {stdout!r}")
+        slurm_job_id: str = job_id_match.group(1)
 
         result: dict = request.model_dump()
         result.update({'timestamp_started': int(time.time()), 'slurm_job_id': slurm_job_id})
@@ -203,30 +206,38 @@ class InfraSlurm(Infra):
     def stop(self, request: RequestLaunched) -> None:
         return None
 
-
     def status(self, request: RequestLaunched) -> RequestLaunched | RequestCompleted:
         # Check job status in SLURM
         print(f">>>>>>>>>>>>>>> CHECK JOB STATUS: make debug-one-cluster job_id={request.slurm_job_id} UUID={request.uuid}", flush=True)
-        stdout, stderr = execute_command(f"cd app; make debug-one-cluster job_id={request.slurm_job_id} UUID={request.uuid}", timeout_one_seconds=10.)
+        stdout, stderr = execute_command(
+            f"cd app; make debug-one-cluster job_id={request.slurm_job_id} UUID={request.uuid}",
+            timeout_one_seconds=10.,
+        )
         print('DEBUG stdout', stdout, flush=True)
         print('DEBUG stderr', stderr, flush=True)
 
         # Get job outputs
         sections = re.split(f'({JOB_DETAILS_SEP}|{JOB_ERROR_SEP}|{JOB_OUTPUT_SEP})', stdout)
         if len(sections) != 7:
-            raise ValueError(f"Unexpected format after splitting sections: expected 7 parts, got {len(sections)}. Sections: {sections}")
+            raise ValueError(
+                f"Unexpected format after splitting sections: expected 7 parts, got {len(sections)}. Sections: {sections}"
+            )
         job_details = ""
         job_error = ""
         job_output = ""
         try:
-            details_index = sections.index(re.search(JOB_DETAILS_SEP, stdout).group(0))
-            error_index = sections.index(re.search(JOB_ERROR_SEP, stdout).group(0))
-            output_index = sections.index(re.search(JOB_OUTPUT_SEP, stdout).group(0))
-            job_details += sections[details_index + 1].strip()
-            job_error += sections[error_index + 1].strip()
-            job_output += sections[output_index + 1].strip()
-        except AttributeError:
-            print("Could not find all section separators in the string.", flush=True)
+            details_match = re.search(JOB_DETAILS_SEP, stdout)
+            error_match = re.search(JOB_ERROR_SEP, stdout)
+            output_match = re.search(JOB_OUTPUT_SEP, stdout)
+            if details_match is None or error_match is None or output_match is None:
+                print("Could not find all section separators in the string.", flush=True)
+            else:
+                details_index = sections.index(details_match.group(0))
+                error_index = sections.index(error_match.group(0))
+                output_index = sections.index(output_match.group(0))
+                job_details += sections[details_index + 1].strip()
+                job_error += sections[error_index + 1].strip()
+                job_output += sections[output_index + 1].strip()
         except ValueError:
             print("Error processing sections after splitting.", flush=True)
 
@@ -238,18 +249,26 @@ class InfraSlurm(Infra):
                 status = 'SUCCEEDED'
             else:
                 status = 'FAILED'
-            
+
             # Get metrics
             metrics = parse_markdown_table(job_output)
             if len(metrics) == 0:
                 print(f"Warning: No metrics found in job output for request {request.uuid}", flush=True)
             runtime: float = 0
-            if len(list(filter(lambda d: d['name'] == 'Runtime data loading seconds (~↓)', metrics))) > 0:
-                runtime = list(filter(lambda d: d['name'] == 'Runtime data loading seconds (~↓)', metrics))[0]['value']
+            runtime_entries = [d for d in metrics if d['name'] == 'Runtime data loading seconds (~↓)']
+            if runtime_entries:
+                runtime = runtime_entries[0]['value']
 
             # Update
             result = request.model_dump()
-            result.update({'status': status, 'metrics': metrics, 'job_details': job_details, 'stdout': job_output, 'stderr': job_error + '\n' + stderr, 'credits_consumed': CREDITS_PER_HOUR * (runtime / 3600.0)})
+            result.update({
+                'status': status,
+                'metrics': metrics,
+                'job_details': job_details,
+                'stdout': job_output,
+                'stderr': job_error + '\n' + stderr,
+                'credits_consumed': CREDITS_PER_HOUR * (runtime / 3600.0),
+            })
             return RequestCompleted(**result)
         else:
             return request
