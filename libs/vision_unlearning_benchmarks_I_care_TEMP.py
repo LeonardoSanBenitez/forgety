@@ -28,7 +28,15 @@ import seaborn as sns
 import logging
 import sys
 import shutil
+import pickle
 from huggingface_hub import hf_api, HfApi, snapshot_download
+from sklearn.compose import ColumnTransformer
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import r2_score, mean_squared_error, root_mean_squared_error
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder
 
 FORMATTER = logging.Formatter(
     fmt="[%(asctime)s] %(name)-8s %(levelname)-8s %(message)s",
@@ -176,6 +184,35 @@ def _encode_image_file(img_path: str, max_dim: int = 1024) -> str:
 def _decode_image(image_data: str) -> io.BytesIO:
     assert isinstance(image_data, str), f"Expected image data to be a base64 string, but got {type(image_data)}"
     return io.BytesIO(base64.b64decode(image_data))
+
+####
+
+import json
+import numpy as np
+import pandas as pd
+import shap
+
+def explanation_to_dict(expl):
+    return {
+        "values": expl.values.tolist() if expl.values is not None else None,
+        "base_values": (
+            expl.base_values.tolist()
+            if isinstance(expl.base_values, np.ndarray)
+            else expl.base_values
+        ),
+        "data": expl.data.tolist() if expl.data is not None else None,
+        "feature_names": list(expl.feature_names) if expl.feature_names is not None else None,
+        "output_names": list(expl.output_names) if expl.output_names is not None else None,
+    }
+
+def dict_to_explanation(d):
+    return shap.Explanation(
+        values=np.array(d["values"]) if d["values"] is not None else None,
+        base_values=np.array(d["base_values"]) if d["base_values"] is not None else None,
+        data=np.array(d["data"]) if d["data"] is not None else None,
+        feature_names=d["feature_names"],
+        output_names=d["output_names"],
+    )
 
 # Every artifact should be abstracted by a OO class, instead of just a loosely connected set of functions
 # This class should also handle automatically fetching the underlying data from huggingface
@@ -1061,6 +1098,11 @@ type_l = Literal[
     "clip_embedding",
 ]
 
+type_regression_algorithm = Literal[
+    "linear_regression",
+    "random_forest",
+]
+
 # And converting between them
 GUI_TO_BACKEND = {
     "unlearning_algorithm": {
@@ -1091,6 +1133,7 @@ GUI_TO_BACKEND = {
     },
 }
 
+
 type_direction = Literal["↑", "↓"]
 
 mp_to_direction: Dict[type_mp, type_direction] = {  # Higher =  more interference
@@ -1104,6 +1147,23 @@ s_to_direction: Dict[type_s, type_direction] = {
     "jacc": "↑",
 }
 # me_to_direction can... be infered?
+
+
+task_to_attributes_of_interest = {
+    "breeds": [
+        "grooming_frequency_category_binary",  # (a continuous attribute describing how often brushing is required; discretized into two bins based on quartiles)
+        "supergroup",  # (categorical, with values such as retrievers and terriers)
+    ],
+    "scenes": [
+        "sports",
+        "natural",
+    ],
+    "people": [
+        "hpi_bin",
+        "occupation_simplified",
+    ]
+}
+
 
 # The method's hyperparameter is specially problematic to map/find, because i initially thought it should
 # be configurable and then I chagned my mind. Sometimes it can be infered (like in `choose_metric_column_interference_per_entity`),
@@ -1368,11 +1428,11 @@ class ResultTemplateMetricSimilarityAlignment(ResultTemplate):
                 value2 = df2.loc[label_i, label_j]
                 df_prepared = pd.concat([df_prepared, pd.DataFrame({'c1': [value1], 'c2': [value2]}, index=[f'{label_i}_to_{label_j}'])])
         assert df_prepared.shape[0] == (df1.shape[0] * df1.shape[1] - (df1.shape[0] if exclude_diagonal else 0))
-        df_prepared.dropna(inplace=True)
         assert pd.api.types.is_numeric_dtype(df_prepared['c1']), f"{self.interference_pair} must be numeric"
         assert pd.api.types.is_numeric_dtype(df_prepared['c2']), f"{self.similarity_metric} must be numeric"
 
         # Significance tests
+        df_prepared.dropna(inplace=True)
         x = df_prepared['c1'].astype(float).to_list()
         y = df_prepared['c2'].astype(float).to_list()
         pearson_res = pearsonr(x, y)
@@ -1401,7 +1461,327 @@ class ResultTemplateMetricSimilarityAlignment(ResultTemplate):
             }
         }
         return data
-    
+
+
+class ResultTemplateMetricSimilarityAlignmentMulti(ResultTemplate):
+    """
+    Multi-input Single-output Regression Generalization of ResultTemplateMetricSimilarityAlignment (see also Appendix E, adapted from the multi-output setting).
+    Also, the interpretability and feature engineering aspects are improved.
+
+    ---
+
+    We consider a fixed *model* \(m\), *task* \(t\), and *unlearning method* \(u\), which are omitted for brevity.
+
+    The objective is to quantify whether interference between *entities* is aligned with their *similarity*, i.e., to what degree similar *entities* interfere more with each other.
+
+    For every ordered pair of distinct *entities* \(e_i, e_j \in t\) with \(i \neq j\), we observe several *SimilarityBetweenEntities* measures, indexed by superscripts \(\ell = 1, 2, \dots, |S|\), and a single *MetricInterferencePerEntityPair* target \(m_p(e_i,e_j)\).
+
+    Each ordered pair \((e_i, e_j)\) is therefore treated as one data point with feature vector
+
+    $$
+    \mathbf{X}_{ij}
+    =
+    \big(
+    s^{(1)}(e_i, e_j),
+    \dots,
+    s^{(|S|)}(e_i, e_j)
+    \big)
+    $$
+
+    and scalar target
+
+    $$
+    Y_{ij}
+    =
+    m_p(e_i, e_j).
+    $$
+
+    The resulting dataset is
+
+    $$
+    \mathcal{D}
+    =
+    \{
+    (\mathbf{X}_{ij}, Y_{ij})
+    \mid
+    e_i, e_j \in t,\ i \neq j
+    \}.
+    $$
+
+    From this dataset, a regression model can be estimated using standard regression procedures with appropriate validation.
+
+    In the linear case,
+
+    $$
+    Y_{ij}
+    =
+    \beta_0
+    +
+    \sum_{\ell=1}^{|S|}
+    \beta_{\ell}
+    X^{(\ell)}_{ij}
+    +
+    \varepsilon_{ij}.
+    $$
+
+    Given a specific *entity* \(e_i\) whose removal is considered, similarities
+
+    $$
+    X^{(\ell)}_{ij}
+    =
+    s^{(\ell)}(e_i, e_j)
+    $$
+
+    can be computed for all remaining *entities* \(e_j \in t\). The fitted model then yields predictions
+
+    $$
+    \hat{Y}_{ij}
+    =
+    f(\mathbf{X}_{ij}),
+    $$
+
+    which approximate the expected interference on each receiver *entity*.
+
+
+    Furthermore, the concept of *similarity* may also encode several forms of practical data engineering. For example, one may define:
+    - a distinct *similarity* function for each *attribute*, or
+    - a *similarity* function based only on the attributes of the emitter entity.
+
+    """
+    model: type_model = "sd1.4"
+    task: type_task = 'people'
+    unlearning_algorithm: type_unlearning_algorithm
+    interference_pair: type_mp
+    similarity_metric_list: List[type_s]
+    significance_threshold: float = 0.05
+    include_attribute_diff_similarity: bool = True
+    include_attribute_value_similarity: bool = True
+    regression_algorithm: type_regression_algorithm = 'linear_regression'
+    random_state: int = 42
+    test_size: float = 0.3
+
+    def _serialize_parameters(self) -> str:
+        return f"{self.model}_{self.task}_{self.unlearning_algorithm}_{self.interference_pair}_{'_'.join(self.similarity_metric_list)}_{int(self.include_attribute_diff_similarity)}_{int(self.include_attribute_value_similarity)}_{self.regression_algorithm}"
+
+    def _get_partial_path_local(self):
+        return self._get_data_path_local() + '.partial'
+
+    @classmethod
+    def plot(cls, data: dict, figsize: Tuple[int, int] = (6, 15), return_fig: bool = False) -> Optional[Tuple[Figure, plt.Axes]]:
+        explanations = dict_to_explanation(data['result']['shap_explanations'])
+
+        fig, ax = plt.subplots(figsize=figsize)
+        y_true = np.asarray(data['result']['y_test_true'], dtype=float)
+        y_pred = np.asarray(data['result']['y_test_pred'], dtype=float)
+
+        ax.scatter(y_true, y_pred, alpha=0.7)
+        min_val = float(np.nanmin([y_true.min(), y_pred.min()]))
+        max_val = float(np.nanmax([y_true.max(), y_pred.max()]))
+        ax.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2)
+        ax.set_xlabel('True value')
+        ax.set_ylabel('Predicted value')
+        ax.set_title(f"True vs Predicted (MAPE: {data['result'].get('mape_test', float('nan')):.4f})")
+        ax.grid(True, alpha=0.3)
+
+
+        shap.plots.bar(explanations)
+        shap.plots.beeswarm(explanations)
+
+        if return_fig:
+            return fig, ax
+        plt.show()
+        return None
+
+    def _compute_from_scratch(self, exclude_diagonal: bool = True, entity_col: str = 'name') -> dict:
+        # Gather precomputed data
+        metadata_filtered = get_metadata_filtered(self.task)
+        df_mp = pd.DataFrame(ResultTemplateInterferenceMatrix(
+            model = self.model,
+            task = self.task,
+            unlearning_algorithm = self.unlearning_algorithm,
+            interference_pair = self.interference_pair
+        ).compute()['result'])
+        df_mp.set_index('emitter', inplace=True)
+
+        df_s_list = []
+        for similarity_metric in self.similarity_metric_list:
+            df_s = pd.DataFrame(ResultTemplateSimilarityMatrix(
+                model = self.model,
+                task = self.task,
+                unlearning_algorithm = self.unlearning_algorithm,
+                similarity_metric = similarity_metric
+            ).compute()['result'])
+            df_s.set_index('emitter', inplace=True)
+            df_s_list.append(df_s)
+
+        for df_s in df_s_list:
+            if df_mp.shape != df_s.shape:
+                raise ValueError("DataFrames must have the same shape.")
+            if not np.all(df_mp.index == df_mp.columns):
+                raise ValueError("DataFrames must be square with matching indices and columns.")
+            if not np.all(df_mp.index == df_s.index):
+                raise ValueError("DataFrames must have the same index and columns.")
+            if not np.all(df_mp.columns == df_s.columns):
+                raise ValueError("DataFrames must have the same index and columns.")
+
+        # Prepare data
+        # Each cell ij becomes a row
+        # One col for the target (the metric-interference-per-pair, entry ij of df_mp), then one col per feature (each similarity + engineered features)
+        # index are the labelsi_to_labelj
+        labels = df_mp.index.to_list()
+        columns = [self.interference_pair] + self.similarity_metric_list
+        for attribute in task_to_attributes_of_interest[self.task]:
+            if self.include_attribute_diff_similarity:
+                columns.append(f'is_{attribute}_same')
+            if self.include_attribute_value_similarity:
+                columns.append(f'emitter_{attribute}_value')
+                columns.append(f'receiver_{attribute}_value')
+        df_prepared = pd.DataFrame(columns=columns)
+        for label_emitter in labels:
+            for label_receiver in labels:
+                if exclude_diagonal and (label_emitter == label_receiver):
+                    continue
+                
+                row_dict = {self.interference_pair: df_mp.loc[label_emitter, label_receiver]}
+                for idx, similarity_metric in enumerate(self.similarity_metric_list):
+                    row_dict[similarity_metric] = df_s_list[idx].loc[label_emitter, label_receiver]
+                
+                # Feature engineering
+                # This logic is very similar to jacc_metric_score
+                row_emitter = next((row for row in metadata_filtered if row[entity_col] == label_emitter), None)
+                row_receiver = next((row for row in metadata_filtered if row[entity_col] == label_receiver), None)
+                if row_emitter is None or row_receiver is None:
+                    raise ValueError(f"Entities {label_emitter} and/or {label_receiver} not found in metadata")
+                if set(row_emitter.keys()) != set(row_receiver.keys()):
+                    raise ValueError(f"Entities {label_emitter} and {label_receiver} must have the same attributes")
+                
+                for attribute in task_to_attributes_of_interest[self.task]:
+                    assert attribute in row_emitter, f"Attribute {attribute} not found in metadata for entity {label_emitter}"
+                    assert attribute in row_receiver, f"Attribute {attribute} not found in metadata for entity {label_receiver}"
+                    assert type(row_emitter[attribute]) == type(row_receiver[attribute]), f"Attribute {attribute} must have the same type for both entities {label_emitter} and {label_receiver}"
+                    if type(row_emitter[attribute]) in [np.float64, float]:
+                        logger.warning(f"Equality comparison for float attribute {attribute} may be unreliable")
+                    if self.include_attribute_diff_similarity:
+                        row_dict[f'is_{attribute}_same'] = float(row_emitter[attribute] == row_receiver[attribute])
+                    if self.include_attribute_value_similarity:
+                        row_dict[f'emitter_{attribute}_value'] = row_emitter[attribute]
+                        row_dict[f'receiver_{attribute}_value'] = row_receiver[attribute]
+                
+                row_df = pd.DataFrame([row_dict], index=[f'{label_emitter}_to_{label_receiver}'])
+                assert list(row_df.columns) == list(df_prepared.columns), f"Expected columns {df_prepared.columns}, but got {row_df.columns}"
+                assert row_df.shape == (1, len(columns))
+                df_prepared = pd.concat([df_prepared, row_df])
+        
+        assert df_prepared.shape[0] == (df_mp.shape[0] * df_mp.shape[1] - (df_mp.shape[0] if exclude_diagonal else 0))
+        for col in self.similarity_metric_list:
+            assert col in df_prepared.columns, f"Expected column {col} in df_prepared, but got {df_prepared.columns}"
+            assert pd.api.types.is_numeric_dtype(df_prepared[col]), f"Expected column {col} to be numeric, but got {df_prepared[col].dtype}"
+        df_prepared.dropna(inplace=True)
+
+
+        # Split 70-30 train-test
+        target_col = self.interference_pair
+        X = df_prepared.drop(columns=[target_col])
+        y = pd.to_numeric(df_prepared[target_col], errors='coerce')
+        valid_idx = y.notna()
+        X = X.loc[valid_idx]
+        y = y.loc[valid_idx]
+
+        X_train, X_test, y_train, y_test = train_test_split(
+            X,
+            y,
+            test_size=self.test_size,
+            random_state=self.random_state,
+        )
+
+        categorical_cols = X_train.select_dtypes(include=['object', 'category']).columns.tolist()
+        numeric_cols = [c for c in X_train.columns if c not in categorical_cols]
+
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ('num', 'passthrough', numeric_cols),
+                ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_cols),
+            ],
+            remainder='drop'
+        )
+        
+        # Fit regression model
+        if self.regression_algorithm == 'random_forest':
+            regressor = RandomForestRegressor(n_estimators=50, random_state=self.random_state)
+        else:
+            regressor = LinearRegression()
+
+        model_pipeline = Pipeline([
+            ('preprocessor', preprocessor),
+            ('regressor', regressor),
+        ])
+        model_pipeline.fit(X_train, y_train)
+
+        trained_model_path = self._get_partial_path_local()
+        os.makedirs(os.path.dirname(trained_model_path), exist_ok=True)
+        with open(trained_model_path, 'wb') as f:
+            pickle.dump(model_pipeline, f)
+        
+        # Analyze errors
+        y_pred_train = model_pipeline.predict(X_train)
+        y_pred_test = model_pipeline.predict(X_test)
+        r2_train = float(r2_score(y_train, y_pred_train))
+        r2_test = float(r2_score(y_test, y_pred_test))        
+
+        feature_names = model_pipeline.named_steps['preprocessor'].get_feature_names_out().tolist()
+
+        # TODO global F-test:
+        # whether the model explains variance better than a null/intercept-only model
+
+        # Shap
+        X_sample = X.sample(n=min(1000, len(X)), random_state=self.random_state)
+        X_sample_preprocessed = model_pipeline.named_steps['preprocessor'].transform(X_sample)
+        X_sample_preprocessed_df = pd.DataFrame(X_sample_preprocessed, columns=[feature.split('__')[1] for feature in feature_names])
+        if self.regression_algorithm == 'random_forest':
+            explainer = shap.TreeExplainer(model_pipeline.named_steps['regressor'])
+        elif self.regression_algorithm == 'linear_regression':
+            explainer = shap.LinearExplainer(model_pipeline.named_steps['regressor'], X_sample_preprocessed, feature_perturbation='interventional')
+        else:
+            raise ValueError(f"Unsupported regression algorithm: {self.regression_algorithm}")
+
+        explanations = explainer(X_sample_preprocessed_df)
+
+
+
+
+
+        data = {
+            'metadata': {
+                'RT': self.__class__.__name__,
+                'model': self.model,
+                'task': self.task,
+                'unlearning_algorithm': self.unlearning_algorithm,
+                'interference_pair': self.interference_pair,
+                'similarity_metric_list': self.similarity_metric_list,
+                'interference_pair_direction': mp_to_direction[self.interference_pair],
+                'similarity_metric_directions': [s_to_direction[sim] for sim in self.similarity_metric_list],
+                'significance_threshold': self.significance_threshold,
+                'include_attribute_diff_similarity': self.include_attribute_diff_similarity,
+                'include_attribute_value_similarity': self.include_attribute_value_similarity,
+                'regression_algorithm': self.regression_algorithm,
+                'trained_model_path': trained_model_path,
+            },
+            'result': {
+                'n_train': int(len(X_train)),
+                'n_test': int(len(X_test)),
+                'r2_train': r2_train,
+                'r2_test': r2_test,
+                'rmse_train': float(root_mean_squared_error(y_train, y_pred_train)),
+                'rmse_test': float(root_mean_squared_error(y_test, y_pred_test)),
+                'features': feature_names,
+                'y_test_true': y_test.tolist(),
+                'y_test_pred': y_pred_test.tolist(),
+                'shap_explanations': explanation_to_dict(explanations),
+            }
+        }
+        return data
+
+
 class ResultTemplateSignificantRelationshipNumerical(ResultTemplate):
     """
     Measures whether two numerical attributes are significantly correlated.
@@ -1773,7 +2153,32 @@ class ResultTemplateCountSignificantRelationship(ResultTemplate):
             }
         }
         return data
-
+'''TEMP
+results = []
+for model in list(type_model.__args__): 
+    for task in ['people']:#list(type_task.__args__):
+        for unlearning_algorithm in list(type_unlearning_algorithm.__args__):
+            for interference_entity in list(type_me.__args__):
+                for attribute in domain_attribute[task.capitalize()]:
+                    try:
+                        data = ResultTemplateSignificantRelationshipCategorical(model=model, task=task, unlearning_algorithm=unlearning_algorithm, interference_entity=interference_entity, attribute=attribute).compute()
+                    except InvalidAttributeTypeError:
+                        data = ResultTemplateSignificantRelationshipNumerical(model=model, task=task, unlearning_algorithm=unlearning_algorithm, interference_entity=interference_entity, attribute=attribute).compute()
+                    except InsufficientSamplesError:
+                        continue
+                    except Exception as e:
+                        logger.warning(f'Combination {model}, {task}, {unlearning_algorithm}, {interference_entity}, {attribute} failled with {e}')
+                        assert 1==0#continue
+                    results.append([model, task, unlearning_algorithm, interference_entity, attribute, data['result']['significant']])
+                    print('.', end='')
+                print('')
+            print('---')
+df = pd.DataFrame(results, columns=['model', 'task', 'unlearning_algorithm', 'interference_entity', 'attribute', 'significant'])
+df.head()
+print(df.shape)
+print(df[df['task']=='people'].groupby('attribute').sum()['significant'].sort_values(ascending=False))
+print(df[df['task']=='people'].groupby('unlearning_algorithm').sum()['significant'].sort_values(ascending=False))
+'''
 
 class ResultTemplateImplicitAssociationTest(ResultTemplate):
     """
