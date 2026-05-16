@@ -35,7 +35,7 @@ def infer_request(request: Request, num_forget_images: int, num_retain_images: i
             raise HTTPException(status_code=400, detail="UCE requires a concept to forget.")
         if not request.concept_retain:
             raise HTTPException(status_code=400, detail="UCE requires a concept to retain.")
-    
+
     # Choose hyperparameters
     hyperparameters: dict
     if request.unlearning_algorithm == "FADE" or request.unlearning_algorithm == "Munba":
@@ -53,19 +53,19 @@ def infer_request(request: Request, num_forget_images: int, num_retain_images: i
             "mixed_precision": "no",
             "learning_rate": 1e-4,
             "max_grad_norm": 1.0,
-            
+
             "checkpointing_steps": 10000,
             "lr_scheduler_type": "constant",
             "lr_warmup_steps": 0,
             "save_strategy": "epoch",
             "save_total_limit": 2,
             "random_flip": True,
-            
+
             "lora_r": 4,
             "target_modules": ["to_k", "to_q", "to_v", "to_out.0"],
             "lora_alpha": 4,
             "lora_dropout": 0.1,
-            
+
             "seed": 42,
 
             "per_device_train_batch_size": 2,
@@ -115,7 +115,7 @@ def infer_request(request: Request, num_forget_images: int, num_retain_images: i
             "preserve_scale": 1.0,
             "lamb": 0.5,
             "edit_concepts": request.concept_forget,  # example: cat
-            "preserve_concepts": request.concept_retain, # TODO: this isnt good... Example: lion; tiger; leopard
+            "preserve_concepts": request.concept_retain,  # TODO: this isnt good... Example: lion; tiger; leopard
             "expand_prompts": False,
         }
 

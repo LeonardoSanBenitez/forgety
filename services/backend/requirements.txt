@@ -3,6 +3,7 @@ gunicorn
 fastapi
 pydantic
 python-multipart
+httpx
 
 mypy
 pycodestyle

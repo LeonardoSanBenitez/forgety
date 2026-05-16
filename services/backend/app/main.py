@@ -1,8 +1,6 @@
-from typing import List, Dict, Tuple, Optional, Any
+from typing import List, Dict, Optional, Any
 import shutil
 import os
-import subprocess
-import time
 from fastapi import FastAPI, Form, File, UploadFile, HTTPException, Body
 from libs import Request, RequestInferred, RequestLaunched, RequestCompleted, DatabaseLocalJson, InfraSlurm, infer_request
 from libs.vision_unlearning_benchmarks_I_care_TEMP import rt_name_to_class, convert_params_from_gui_to_backend, type_task, InterferencePerEntity
@@ -10,6 +8,7 @@ from libs.vision_unlearning_benchmarks_I_care_TEMP import rt_name_to_class, conv
 app = FastAPI(debug=True)
 database = DatabaseLocalJson(filepath="app/database.json")
 infra = InfraSlurm()
+
 
 @app.post("/v1/public-api-create-request")
 async def create_request(
@@ -27,7 +26,6 @@ async def create_request(
     Accepts experiment request + dataset zip upload.
     Returns (status_code, message_or_id).
     """
-
     print(
         f"Received request:\n"
         f"  customer_id={customer_id}\n"
@@ -51,7 +49,6 @@ async def create_request(
         model_output_hf_id=model_output_hf_id,
     )
     identifier = request.uuid
-    
 
     ###############################################
     # Handle dataset upload
@@ -60,22 +57,23 @@ async def create_request(
     num_retain_images = 0
     if dataset is not None:
         print("Starting data extraction...", flush=True)
-        
+
         # Check if the uploaded file is a .zip file
-        if not dataset.filename.lower().endswith('.zip'):
+        if not dataset.filename or not dataset.filename.lower().endswith('.zip'):
             raise HTTPException(status_code=400, detail="Uploaded file must be a .zip archive.")
+        dataset_filename: str = dataset.filename  # narrowed from Optional[str]
 
         # Create folder structure for the request
         data_path = os.path.join("/requests", str(identifier), "data")
-        zip_location = os.path.join(data_path, dataset.filename)
+        zip_location = os.path.join(data_path, dataset_filename)
         forget_path = os.path.join(data_path, "forget")
         retain_path = os.path.join(data_path, "retain")
         os.makedirs(data_path, exist_ok=True)
-        
+
         # Save
         with open(zip_location, "wb") as buffer:
             shutil.copyfileobj(dataset.file, buffer)
-        print(f"file '{dataset.filename}' saved at '{zip_location}'", flush=True)
+        print(f"file '{dataset_filename}' saved at '{zip_location}'", flush=True)
 
         # Unzip
         shutil.unpack_archive(zip_location, data_path)
@@ -97,7 +95,7 @@ async def create_request(
     ###############################################
     request_inferred: RequestInferred = infer_request(request, num_forget_images, num_retain_images)
     print(f"Inferred request: {request_inferred}", flush=True)
-    
+
     ###############################################
     # Launch
     ###############################################
@@ -109,25 +107,25 @@ async def create_request(
 
     return identifier
 
+
 @app.post("/v1/public-api-compute-rt")
 async def compute_rt(template: str = Body(...), params: dict = Body(...)) -> dict:
     """
-    Compute and return its resulting data (as returned by the compute method of the corresponding ResultTemplate subclass) as a JSON response.
+    Compute and return resulting data (as returned by the compute method of the
+    corresponding ResultTemplate subclass) as a JSON response.
     """
-    
     rt = rt_name_to_class[template](**convert_params_from_gui_to_backend(params))
-    #print('started', flush=True)
     data = rt.compute()
-    #print(data, flush=True)
     return data
 
 
 @app.get("/v1/public-api-read-interference-per-entity-all")
 async def read_results() -> dict:
     data: Dict[type_task, List[Dict[str, Any]]] = {}
-    for task in list(type_task.__args__):
+    for task in list(type_task.__args__):  # type: ignore[attr-defined]
         data[task] = InterferencePerEntity(task=task).compute()
     return data
+
 
 @app.post("/v1/test-launch")
 async def test_launch() -> str:
@@ -148,6 +146,7 @@ async def test_launch() -> str:
     result = f"Request {request_launched.uuid} updated to {updated_request} (type {type(updated_request)})"
     print(result, flush=True)
     return result
+
 
 @app.get("/v1/test-read")
 async def test_read(uuid: str) -> str:
@@ -184,61 +183,6 @@ async def read_incidents(
     ###############################################
     results = database.get_requests()
     results = sorted(results, key=lambda r: getattr(r, "timestamp_started", 0), reverse=True)
-    return results
-    #     # TODO: get images from server too
-    results = [
-        RequestLaunched(
-            customer_id='demo-customer',
-            experiment_name='Modern art generation, remove John Snow works',
-            model_base_name='stable-diffusion-v1-5/stable-diffusion-v1-5',
-            concept_forget='John Snow',
-            concept_overwrite='Vanilla modern art',
-            concept_retain=None,
-            unlearning_algorithm = 'FADE',
-            model_output_hf_id = 'demo-customer/modern-art-no-john-snow',
-            hyperparameters = {
-                'epochs': 10
-            },
-            timestamp_started = 1234567890,
-            slurm_job_id = '123456'
-        ),
-        RequestCompleted(
-            customer_id='demo-customer',
-            experiment_name='Prehistoric painting generator, forget cellphones',
-            model_base_name='stable-diffusion-v1-5/stable-diffusion-v1-5',
-            concept_forget='Someone holding a cellphone',
-            concept_overwrite='Someone holding a rock',
-            concept_retain=None,
-            unlearning_algorithm = 'FADE',
-            model_output_hf_id = 'demo-customer/prehistoric-art-no-cellphones',
-            hyperparameters = {
-                'epochs': 10
-            },
-            timestamp_started = 1234567890,
-            slurm_job_id = '123456',
-            status = 'SUCCEEDED',
-            metrics = [{'name': 'accuracy', 'value': 0.95}],
-            credits_consumed = 12.5,
-        ),
-        RequestCompleted(
-            customer_id='demo-customer',
-            experiment_name='Prehistoric painting generator, forget cellphones',
-            model_base_name='stable-diffusion-v1-5/stable-diffusion-v1-5',
-            concept_forget=None,
-            concept_overwrite=None,
-            concept_retain=None,
-            unlearning_algorithm = 'Munba',
-            model_output_hf_id = 'demo-customer/prehistoric-art-no-cellphones',
-            hyperparameters = {
-                'epochs': 10
-            },
-            timestamp_started = 1234567890,
-            slurm_job_id = '123456',
-            status = 'FAILED',
-            metrics = [{}],
-            credits_consumed = 0,
-        ),
-    ]
     return results
 
 

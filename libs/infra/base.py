@@ -1,7 +1,7 @@
-from typing import List, Optional
 from pydantic import BaseModel
 from abc import ABC, abstractmethod
 from libs.schemas.request import RequestInferred, RequestLaunched, RequestCompleted
+
 
 class Infra(BaseModel, ABC):
     @abstractmethod
