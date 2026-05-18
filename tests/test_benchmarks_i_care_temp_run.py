@@ -180,6 +180,119 @@ class TestSimilarityMatrixDinoCompute:
             rt._compute_from_scratch()
 
 
+class TestSimilarityMatrixDinoEpochPath:
+    """Verify that the epoch count in the embedding filename is NOT hardcoded.
+
+    Bug 1 fix: the path must use unlearning_algorithm_to_epochs[task]['distil']
+    formatted as :03d, so breeds/scenes (100 epochs) get 'distil_100.json' and
+    people (400 epochs) get 'distil_400.json'.
+    """
+
+    def test_breeds_path_uses_100_epochs(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        """breeds task must resolve to *distil_100.json*, not distil_400.json."""
+        entities = ["Labrador", "Poodle", "Bulldog"]
+        monkeypatch.setattr(
+            vb, "huggingface_dataset_file_exists", lambda *a, **kw: False
+        )
+        monkeypatch.setattr(
+            vb, "get_metadata_filtered",
+            lambda task, **kw: [{"name": e} for e in entities],
+        )
+        # Write file at the correct path (breeds, distil, 100 epochs -> :03d = '100')
+        emb_path = str(tmp_path / "embeddings_breeds_original_distil_100.json")
+        _write_embedding_file(emb_path, entities)
+
+        rt = vb.ResultTemplateSimilarityMatrix(
+            task="breeds",
+            similarity_metric="dino",
+            save_outputs=False,
+            base_folder=str(tmp_path),
+        )
+        # Must succeed (file found) with the 100-epoch path
+        data = rt._compute_from_scratch()
+        assert data["metadata"]["similarity_metric"] == "dino"
+        assert len(data["result"]) == len(entities)
+
+    def test_breeds_wrong_path_400_not_found(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        """If we accidentally placed the file at distil_400.json for breeds,
+        the RT must raise (not silently find the wrong file)."""
+        entities = ["Labrador", "Poodle"]
+        monkeypatch.setattr(
+            vb, "huggingface_dataset_file_exists", lambda *a, **kw: False
+        )
+        monkeypatch.setattr(
+            vb, "get_metadata_filtered",
+            lambda task, **kw: [{"name": e} for e in entities],
+        )
+        # Write at the OLD (wrong) hardcoded path
+        wrong_path = str(tmp_path / "embeddings_breeds_original_distil_400.json")
+        _write_embedding_file(wrong_path, entities)
+
+        rt = vb.ResultTemplateSimilarityMatrix(
+            task="breeds",
+            similarity_metric="dino",
+            save_outputs=False,
+            base_folder=str(tmp_path),
+        )
+        # Should raise because the correct path (100 epochs) doesn't exist
+        with pytest.raises(AssertionError, match="Baseline DINOv2 embeddings not found"):
+            rt._compute_from_scratch()
+
+    def test_people_path_uses_400_epochs(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        """people task must resolve to *distil_400.json* (:03d of 400 is '400')."""
+        entities = ["Alice", "Bob", "Carol"]
+        monkeypatch.setattr(
+            vb, "huggingface_dataset_file_exists", lambda *a, **kw: False
+        )
+        monkeypatch.setattr(
+            vb, "get_metadata_filtered",
+            lambda task, **kw: [{"name": e} for e in entities],
+        )
+        emb_path = str(tmp_path / "embeddings_people_original_distil_400.json")
+        _write_embedding_file(emb_path, entities)
+
+        rt = vb.ResultTemplateSimilarityMatrix(
+            task="people",
+            similarity_metric="dino",
+            save_outputs=False,
+            base_folder=str(tmp_path),
+        )
+        data = rt._compute_from_scratch()
+        assert data["metadata"]["similarity_metric"] == "dino"
+        assert len(data["result"]) == len(entities)
+
+    def test_scenes_path_uses_100_epochs(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        """scenes task must resolve to *distil_100.json*."""
+        entities = ["Beach", "Forest", "City"]
+        monkeypatch.setattr(
+            vb, "huggingface_dataset_file_exists", lambda *a, **kw: False
+        )
+        monkeypatch.setattr(
+            vb, "get_metadata_filtered",
+            lambda task, **kw: [{"name": e} for e in entities],
+        )
+        emb_path = str(tmp_path / "embeddings_scenes_original_distil_100.json")
+        _write_embedding_file(emb_path, entities)
+
+        rt = vb.ResultTemplateSimilarityMatrix(
+            task="scenes",
+            similarity_metric="dino",
+            save_outputs=False,
+            base_folder=str(tmp_path),
+        )
+        data = rt._compute_from_scratch()
+        assert data["metadata"]["similarity_metric"] == "dino"
+        assert len(data["result"]) == len(entities)
+
+
 # ---------------------------------------------------------------------------
 # Item 2 — me_dino: Embedding specificity ratio as a new type_me
 # ---------------------------------------------------------------------------
@@ -259,6 +372,106 @@ class TestMethodSpecificityRegistry:
 
     def test_registry_consistent(self) -> None:
         assert set(vb.rt_name_to_class) == set(vb.rt_name_to_params)
+
+
+class TestMethodSpecificityDirection:
+    """Verify Bug 2 fix: direction is extracted from the column name, not s_to_direction.
+
+    s_to_direction maps type_s keys ('clip', 'jacc', 'dino').
+    self.interference_entity is a type_me value ('Embedding specificity ratio', etc.).
+    These sets are disjoint, so s_to_direction.get(interference_entity) always returns ''.
+    The fix extracts direction from the column suffix: 'metric_distil_400_foo (↑)' -> '↑'.
+    """
+
+    def _fake_data_with_direction(
+        self, labels: List[str], vals: List[float], direction: str
+    ) -> List[Dict[str, Any]]:
+        col = f"metric_distil_400_embedding_specificity_ratio ({direction})"
+        return [{"name": name, col: v} for name, v in zip(labels, vals)]
+
+    def test_direction_up_extracted_from_column(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        """direction in metadata is '↑' when column suffix is (↑)."""
+        labels = ["Alice", "Bob", "Carol"]
+        fake_data = self._fake_data_with_direction(labels, [1.0, 1.5, 1.2], "↑")
+
+        monkeypatch.setattr(
+            vb, "huggingface_dataset_file_exists", lambda *a, **kw: False
+        )
+        monkeypatch.setattr(
+            vb.InterferencePerEntity, "compute", lambda self: fake_data
+        )
+
+        rt = vb.ResultTemplateMethodSpecificity(
+            task="people",
+            interference_entity="Embedding specificity ratio",
+            unlearning_algorithm_list=["distil"],
+            save_outputs=False,
+            base_folder=str(tmp_path),
+        )
+        data = rt._compute_from_scratch()
+        assert data["metadata"]["direction"] == "↑"
+
+    def test_direction_not_empty_for_type_me_value(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        """A type_me value that is NOT a type_s key must still yield a non-empty direction.
+
+        'Embedding specificity ratio' is in type_me but NOT in s_to_direction.
+        With the old bug, s_to_direction.get('Embedding specificity ratio', '') always
+        returned '' silently. After the fix, direction comes from the column suffix.
+        """
+        labels = ["Alice", "Bob"]
+        fake_data = self._fake_data_with_direction(labels, [2.0, 1.8], "↑")
+
+        # Sanity check: confirm the key is NOT in s_to_direction (so the old code was wrong)
+        assert "Embedding specificity ratio" not in vb.s_to_direction
+
+        monkeypatch.setattr(
+            vb, "huggingface_dataset_file_exists", lambda *a, **kw: False
+        )
+        monkeypatch.setattr(
+            vb.InterferencePerEntity, "compute", lambda self: fake_data
+        )
+
+        rt = vb.ResultTemplateMethodSpecificity(
+            task="people",
+            interference_entity="Embedding specificity ratio",
+            unlearning_algorithm_list=["distil"],
+            save_outputs=False,
+            base_folder=str(tmp_path),
+        )
+        data = rt._compute_from_scratch()
+        # direction must be non-empty (was always '' before the fix)
+        assert data["metadata"]["direction"] != ""
+        assert data["metadata"]["direction"] == "↑"
+
+    def test_direction_fallback_empty_when_no_column_resolved(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        """When no column resolves (all algorithms skipped), direction falls back to ''."""
+        # No metric columns at all
+        fake_data = [{"name": "Alice"}, {"name": "Bob"}]
+
+        monkeypatch.setattr(
+            vb, "huggingface_dataset_file_exists", lambda *a, **kw: False
+        )
+        monkeypatch.setattr(
+            vb.InterferencePerEntity, "compute", lambda self: fake_data
+        )
+
+        rt = vb.ResultTemplateMethodSpecificity(
+            task="people",
+            interference_entity="Embedding specificity ratio",
+            unlearning_algorithm_list=["distil"],
+            save_outputs=False,
+            base_folder=str(tmp_path),
+        )
+        data = rt._compute_from_scratch()
+        # result is empty (distil skipped), direction should be ''
+        assert data["result"] == {}
+        assert data["metadata"]["direction"] == ""
 
 
 class TestMethodSpecificityCompute:

@@ -2660,9 +2660,10 @@ class ResultTemplateSimilarityMatrix(ResultTemplateMatrix):
 
         elif self.similarity_metric == 'dino':
             from collections import defaultdict
+            distil_epochs = unlearning_algorithm_to_epochs[self.task]['distil']
             embedding_path = os.path.join(
                 self.base_folder,
-                f'embeddings_{self.task}_original_distil_400.json'
+                f'embeddings_{self.task}_original_distil_{distil_epochs:03d}.json'
             )
             assert os.path.exists(embedding_path), (
                 f"Baseline DINOv2 embeddings not found at {embedding_path}. "
@@ -2755,6 +2756,7 @@ class ResultTemplateMethodSpecificity(ResultTemplate):
         metric_cols = [c for c in df.columns if c.startswith('metric_')]
 
         result: Dict[str, Any] = {}
+        last_resolved_col: Optional[str] = None
         for unlearning_algorithm in self.unlearning_algorithm_list:
             try:
                 col = choose_metric_column_interference_per_entity(
@@ -2766,6 +2768,7 @@ class ResultTemplateMethodSpecificity(ResultTemplate):
                     f'{self.interference_entity}: {e}'
                 )
                 continue
+            last_resolved_col = col
             vals = df[col].dropna().tolist()
             result[unlearning_algorithm] = {
                 'values': vals,
@@ -2775,7 +2778,15 @@ class ResultTemplateMethodSpecificity(ResultTemplate):
                 'n': len(vals),
             }
 
-        direction = s_to_direction.get(self.interference_entity, '')  # type: ignore
+        # Extract direction from the column name suffix (e.g. "metric_distil_400_foo (↑)" -> "↑").
+        # This avoids using s_to_direction which maps type_s keys, not type_me keys.
+        if last_resolved_col is not None:
+            try:
+                direction: str = last_resolved_col.split(' ')[1][1]
+            except (IndexError, TypeError):
+                direction = ''
+        else:
+            direction = ''
 
         return {
             'metadata': {
