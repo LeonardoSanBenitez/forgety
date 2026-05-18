@@ -1088,10 +1088,12 @@ type_me = Literal[
     "Emitter minus receiver average clip diff",
     "Emitter minus receiver average rmse",
     "Emitter minus receiver average ssim",
+    "Embedding specificity ratio",
 ]
 type_s = Literal[
     "clip",
     "jacc",
+    "dino",
 ]
 
 type_l = Literal[
@@ -1127,6 +1129,7 @@ GUI_TO_BACKEND = {
     "similarity_metric": {
         "Clip Cosine Similarity": "clip",
         "Jacc Similarity": "jacc",
+        "DINOv2 Cosine Similarity": "dino",
     },
     "latent_embedding": {
         "Clip Embedding": "clip_embedding",
@@ -1145,6 +1148,7 @@ mp_to_direction: Dict[type_mp, type_direction] = {  # Higher =  more interferenc
 s_to_direction: Dict[type_s, type_direction] = {
     "clip": "↑",
     "jacc": "↑",
+    "dino": "↑",
 }
 # me_to_direction can... be infered?
 
@@ -2653,7 +2657,39 @@ class ResultTemplateSimilarityMatrix(ResultTemplateMatrix):
 
                 # Save partial at the end of each row
                 df_similarities.reset_index(names='emitter').to_json(self._get_partial_path_local(), orient='records')
-        
+
+        elif self.similarity_metric == 'dino':
+            from collections import defaultdict
+            embedding_path = os.path.join(
+                self.base_folder,
+                f'embeddings_{self.task}_original_distil_400.json'
+            )
+            assert os.path.exists(embedding_path), (
+                f"Baseline DINOv2 embeddings not found at {embedding_path}. "
+                f"Run 3_compute_embeddings.py --task {self.task} --method distil "
+                f"--max-identities 100 first."
+            )
+            with open(embedding_path) as f:
+                raw = json.load(f)
+
+            # Group by prompted_entity, compute mean embedding per entity
+            buckets: Dict[str, List[List[float]]] = defaultdict(list)
+            for entry in raw['embeddings']:
+                buckets[entry['prompted_entity']].append(entry['embedding'])
+            entity_embeddings: Dict[str, np.ndarray] = {}
+            for entity, vecs in buckets.items():
+                arr = np.array(vecs)
+                mean_vec = arr.mean(axis=0)
+                entity_embeddings[entity] = mean_vec / np.linalg.norm(mean_vec)
+
+            # Build N×N cosine similarity matrix (dot product of unit vectors)
+            ent_list = [e['name'] for e in metadata_filtered]
+            assert all(e in entity_embeddings for e in ent_list), \
+                "Some entities are missing from the baseline embeddings file."
+            mat = np.array([entity_embeddings[e] for e in ent_list])
+            sim_matrix = mat @ mat.T
+            df_similarities = pd.DataFrame(sim_matrix, index=ent_list, columns=ent_list)
+
         # Return to be saved in its final form
         data = {
             'metadata': {
@@ -2669,6 +2705,91 @@ class ResultTemplateSimilarityMatrix(ResultTemplateMatrix):
 
  
 
+class ResultTemplateMethodSpecificity(ResultTemplate):
+    """
+    Compares the distribution of one *MetricInterferencePerEntity* across multiple
+    *unlearning methods*.
+
+    * **Arguments**: m, t, me, list of u
+    * **Result**: per-method mean, median, std, n, values; box plot
+    * **Interpretation**: lower or higher depending on me direction.
+      Use to rank methods by a single interference-per-entity metric.
+    """
+    model: type_model = "sd1.4"
+    task: type_task = 'people'
+    interference_entity: type_me
+    unlearning_algorithm_list: List[type_unlearning_algorithm]
+
+    def _serialize_parameters(self) -> str:
+        algos = ','.join(self.unlearning_algorithm_list)
+        entity_slug = self.interference_entity.lower().replace(' ', '_')
+        return f"{self.model}_{self.task}_{entity_slug}_{algos}"
+
+    @classmethod
+    def plot(cls, data: dict, figsize: Tuple[int, int] = (6, 5),
+             return_fig: bool = False) -> Optional[Tuple[Figure, plt.Axes]]:
+        result = data['result']
+        methods = list(result.keys())
+        values_per_method = [result[m]['values'] for m in methods]
+        fig, ax = plt.subplots(figsize=figsize)
+        ax.boxplot(values_per_method, tick_labels=methods)
+        ax.set_xlabel('Unlearning method')
+        me_label = data['metadata']['interference_entity']
+        direction = data['metadata'].get('direction', '')
+        ax.set_ylabel(f"{me_label} {direction}")
+        ax.set_title(
+            f"Method comparison\n"
+            f"Task: {data['metadata']['task'].title()}\n"
+            f"Metric: {me_label}"
+        )
+        plt.tight_layout()
+        if return_fig:
+            return fig, ax
+        plt.show()
+
+    def _compute_from_scratch(self) -> dict:
+        interference_per_entity: List[Dict] = InterferencePerEntity(
+            task=self.task, base_folder=self.base_folder
+        ).compute()
+        df = pd.DataFrame(interference_per_entity)
+        metric_cols = [c for c in df.columns if c.startswith('metric_')]
+
+        result: Dict[str, Any] = {}
+        for unlearning_algorithm in self.unlearning_algorithm_list:
+            try:
+                col = choose_metric_column_interference_per_entity(
+                    unlearning_algorithm, self.interference_entity, metric_cols
+                )
+            except Exception as e:
+                logger.warning(
+                    f'Could not find column for {unlearning_algorithm} / '
+                    f'{self.interference_entity}: {e}'
+                )
+                continue
+            vals = df[col].dropna().tolist()
+            result[unlearning_algorithm] = {
+                'values': vals,
+                'mean': float(np.mean(vals)) if vals else float('nan'),
+                'median': float(np.median(vals)) if vals else float('nan'),
+                'std': float(np.std(vals)) if vals else float('nan'),
+                'n': len(vals),
+            }
+
+        direction = s_to_direction.get(self.interference_entity, '')  # type: ignore
+
+        return {
+            'metadata': {
+                'RT': self.__class__.__name__,
+                'model': self.model,
+                'task': self.task,
+                'interference_entity': self.interference_entity,
+                'unlearning_algorithm_list': self.unlearning_algorithm_list,
+                'direction': direction,
+            },
+            'result': result,
+        }
+
+
 rt_name_to_class = {
     "MetricMetricAlignment": ResultTemplateMetricMetricAlignment,
     "MetricSimilarityAlignment": ResultTemplateMetricSimilarityAlignment,
@@ -2681,6 +2802,7 @@ rt_name_to_class = {
     "MinimumCutInterference": ResultTemplateMinimumCutInterference,
     "UnlearningVisualSummary": ResultTemplateUnlearningVisualSummary,
     "InterferenceVisualSummary": ResultTemplateInterferenceVisualSummary,
+    "MethodSpecificity": ResultTemplateMethodSpecificity,
 }
 
 
@@ -2696,4 +2818,5 @@ rt_name_to_params = {
     "MinimumCutInterference": ["model", "task", "unlearning_algorithm", "interference_pair", "entity_1", "entity_2"],
     "UnlearningVisualSummary": ["model", "task", "unlearning_algorithm"],
     "InterferenceVisualSummary": ["model", "task", "unlearning_algorithm", "interference_pair", "entity"],
+    "MethodSpecificity": ["model", "task", "interference_entity", "unlearning_algorithm_list"],
 }
