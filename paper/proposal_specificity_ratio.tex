@@ -1,0 +1,32 @@
+% ── Fragment: Embedding Specificity Ratio (me_dino) ──────────────────────────
+%
+% Intended location: Section "Feasibility demonstration / Design choices",
+% in the sentence "From these, we derive 39 InterferencePerEntity metrics
+% using a simple combinatorial aggregation procedure."
+% This fragment replaces or extends that sentence and the surrounding paragraph.
+%
+% ─────────────────────────────────────────────────────────────────────────────
+
+From these, we derive 39 \textit{InterferencePerEntity} metrics using a simple
+combinatorial aggregation procedure (described in \cref{ap:metrics}).
+%
+Additionally, we define one further \textit{MetricInterferencePerEntity} that does not
+aggregate \textit{InterferencePerEntityPair} values but instead directly compares the
+visual representation of the forgotten entity before and after unlearning:
+%
+$$m_{e,\text{spec}}(e, u) = \frac{d_\text{self}(e, u)}{d_\text{others}(e, u)}$$
+%
+where $d_\text{self}(e, u)$ is the cosine distance between the DINOv2 mean embedding of
+entity $e$ under the unlearned model and under the original model,
+and $d_\text{others}(e, u)$ is the mean such distance computed over all other entities
+prompted in the same unlearning run.
+A ratio $\gg 1$ indicates that the forgotten entity's visual representation shifted
+substantially more than the background drift induced by the unlearning procedure,
+characteristic of a specific unlearning effect.
+A ratio $\approx 1$ indicates that the method caused equal shifts across all entities
+(non-specific).
+A ratio $< 1$ indicates that the entity was less affected than background, implying
+that the unlearning procedure did not target it effectively.
+%
+For \ac{spare} on the \textit{people} task, the mean ratio across 20 entities is $1.79$
+(range $[1.67, 1.94]$); for \ac{uce}, the mean is $1.37$ (range $[0.96, 1.66]$).

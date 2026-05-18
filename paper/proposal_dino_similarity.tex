@@ -1,0 +1,46 @@
+% ── Fragment: DINOv2 similarity metric (s_dino) ──────────────────────────────
+%
+% Intended location: Section "Feasibility demonstration / Design choices",
+% in the paragraph that describes the SimilarityBetweenEntities functions.
+% Replace or extend the sentence starting with
+% "The semantic similarity between \textit{entities} was measured by
+%  \textit{clipCosineSimilarity} ..."
+%
+% ─────────────────────────────────────────────────────────────────────────────
+
+The semantic similarity between \textit{entities} was measured by three complementary
+functions.
+%
+\textit{ClipCosineSimilarity} computes the cosine similarity of CLIP text embeddings
+of the entity names~\cite{Radford2021Clip}.
+%
+\textit{JaccardSimilarity} computes a weighted Jaccard coefficient over the annotated
+categorical and numerical attributes associated with each entity.
+%
+\textit{DINOv2CosineSimilarity} computes the cosine similarity of DINOv2~\cite{oquab2023dinov2}
+ViT-S/14 CLS-token embeddings extracted from the baseline (lora-OFF) generated images.
+Formally, for each entity $e$ we generate $K$ images using the original model
+and compute the mean CLS-token embedding
+$\bar{v}_e = \frac{1}{K}\sum_{k=1}^{K} \phi(x_{e,k}) \in \mathbb{R}^{384}$,
+where $\phi$ denotes the DINOv2 encoder.
+The similarity between two entities is then
+$s_\text{dino}(e_1, e_2) = \langle \hat{v}_{e_1}, \hat{v}_{e_2} \rangle$,
+where $\hat{v}_e = \bar{v}_e / \|\bar{v}_e\|_2$.
+Unlike CLIP, DINOv2 is trained purely on visual data with no language supervision,
+providing a complementary visual-cluster signal; unlike Jaccard, it requires no
+metadata annotations.
+All three similarity functions are computed from lora-OFF (original model) images only,
+making them method-agnostic.
+
+% ─────────────────────────────────────────────────────────────────────────────
+% BibTeX entry to add to references/bibliography.bib (or equivalent):
+%
+% @article{oquab2023dinov2,
+%   title   = {{DINOv2}: Learning Robust Visual Features without Supervision},
+%   author  = {Oquab, Maxime and Darcet, Timoth\'{e}e and Moutakanni, Th\'{e}o
+%              and Vo, Huy and Szafraniec, Marc and Khalidov, Vasil and
+%              Fernandez, Pierre and Haziza, Daniel and Massa, Francisco and
+%              El-Nouby, Alaaeldin and others},
+%   journal = {arXiv preprint arXiv:2304.07193},
+%   year    = {2023}
+% }
