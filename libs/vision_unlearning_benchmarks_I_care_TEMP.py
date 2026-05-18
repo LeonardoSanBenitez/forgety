@@ -2706,7 +2706,7 @@ class ResultTemplateSimilarityMatrix(ResultTemplateMatrix):
 
  
 
-class ResultTemplateMethodSpecificity(ResultTemplate):
+class ResultTemplateMethodComparisonByMetricEntity(ResultTemplate):
     """
     Compares the distribution of one *MetricInterferencePerEntity* across multiple
     *unlearning methods*.
@@ -2813,7 +2813,7 @@ rt_name_to_class = {
     "MinimumCutInterference": ResultTemplateMinimumCutInterference,
     "UnlearningVisualSummary": ResultTemplateUnlearningVisualSummary,
     "InterferenceVisualSummary": ResultTemplateInterferenceVisualSummary,
-    "MethodSpecificity": ResultTemplateMethodSpecificity,
+    "MethodComparisonByMetricEntity": ResultTemplateMethodComparisonByMetricEntity,
 }
 
 
@@ -2829,5 +2829,5 @@ rt_name_to_params = {
     "MinimumCutInterference": ["model", "task", "unlearning_algorithm", "interference_pair", "entity_1", "entity_2"],
     "UnlearningVisualSummary": ["model", "task", "unlearning_algorithm"],
     "InterferenceVisualSummary": ["model", "task", "unlearning_algorithm", "interference_pair", "entity"],
-    "MethodSpecificity": ["model", "task", "interference_entity", "unlearning_algorithm_list"],
+    "MethodComparisonByMetricEntity": ["model", "task", "interference_entity", "unlearning_algorithm_list"],
 }
