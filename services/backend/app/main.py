@@ -5,7 +5,7 @@ from fastapi import FastAPI, Form, File, UploadFile, HTTPException, Body, Depend
 from libs import Request, RequestInferred, RequestLaunched, RequestCompleted, DatabaseLocalJson, InfraSlurm, infer_request
 from libs.database.base import Database
 from libs.infra.base import Infra
-from libs.vision_unlearning_benchmarks_I_care_TEMP import rt_name_to_class, convert_params_from_gui_to_backend, type_task, InterferencePerEntity
+from vision_unlearning.benchmarks.I_care import rt_name_to_class, convert_params_from_gui_to_backend, type_task, InterferencePerEntity
 
 app = FastAPI(debug=True)
 
