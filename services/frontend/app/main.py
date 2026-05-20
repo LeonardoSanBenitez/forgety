@@ -6,7 +6,7 @@ import traceback
 
 
 
-from libs.vision_unlearning_benchmarks_I_care_TEMP import domain_unlearning_algorithm, domain_task, domain_attribute, domain_entity, domain_model, domain_mp, domain_me, domain_s, domain_l, rt_name_to_class, rt_name_to_params
+from vision_unlearning.benchmarks.I_care import domain_unlearning_algorithm, domain_task, domain_attribute, domain_entity, domain_model, domain_mp, domain_me, domain_s, domain_l, rt_name_to_class, rt_name_to_params
 
 
 
