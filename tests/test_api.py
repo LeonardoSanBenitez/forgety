@@ -267,3 +267,32 @@ def test_create_request_uce_missing_concept_retain(client: TestClient) -> None:
     )
     assert response.status_code == 400
     assert "retain" in response.json()["detail"].lower()
+
+
+def test_entity_model_metrics_returns_dict(client: TestClient) -> None:
+    """GET /v1/public-api-entity-model-metrics returns a dict (may be empty if model not on HF)."""
+    response = client.get(
+        "/v1/public-api-entity-model-metrics",
+        params={
+            "task": "people",
+            "entity": "George Washington",
+            "unlearning_algorithm": "distil",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, dict)
+
+
+def test_entity_model_metrics_unknown_entity_graceful(client: TestClient) -> None:
+    """Endpoint returns empty dict (not 500) for entities/methods not on HuggingFace."""
+    response = client.get(
+        "/v1/public-api-entity-model-metrics",
+        params={
+            "task": "people",
+            "entity": "Nonexistent Entity XYZ",
+            "unlearning_algorithm": "uce",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json() == {}

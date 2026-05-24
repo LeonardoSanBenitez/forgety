@@ -1,4 +1,5 @@
 from typing import List, Dict, Optional, Any
+import logging
 import shutil
 import os
 from fastapi import FastAPI, Form, File, UploadFile, HTTPException, Body, Depends
@@ -6,6 +7,9 @@ from libs import Request, RequestInferred, RequestLaunched, RequestCompleted, Da
 from libs.database.base import Database
 from libs.infra.base import Infra
 from vision_unlearning.benchmarks.I_care import rt_name_to_class, convert_params_from_gui_to_backend, type_task, InterferencePerEntity
+from vision_unlearning.integrations.huggingface import huggingface_get_model_metrics
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(debug=True)
 
@@ -211,3 +215,29 @@ async def read_incidents(
 @app.post("/v1/availability-test")
 async def availability_test() -> int:
     return 200
+
+
+@app.get("/v1/public-api-entity-model-metrics")
+async def entity_model_metrics(
+    task: str,
+    entity: str,
+    unlearning_algorithm: str,
+) -> Dict[str, Any]:
+    """
+    Return HuggingFace model card metrics for the unlearned model that corresponds
+    to (task, entity, unlearning_algorithm).
+
+    The I-CARE benchmark models may or may not be published on HuggingFace.
+    This endpoint attempts a best-effort lookup using a constructed model_id and
+    returns an empty dict if the model is not found or the metrics are unavailable.
+    The frontend must handle the empty-dict case with a graceful warning.
+    """
+    method = unlearning_algorithm.lower()
+    entity_slug = entity.lower().replace(" ", "-")
+    model_id = f"LeonardoBenitez/VisionUnlearning-{method}-{task}-{entity_slug}"
+    try:
+        metrics: Dict[str, Any] = huggingface_get_model_metrics(model_id)
+        return metrics
+    except Exception as exc:
+        logger.info(f"HF model metrics unavailable for {model_id}: {exc}")
+        return {}

@@ -17,6 +17,7 @@ services:
       - .env
     environment:
       - PYTHONPATH=/src:/vision_unlearning_src
+      - HF_HUB_ETAG_TIMEOUT=120
     ports:
       - 8001:80
       - 2222:22

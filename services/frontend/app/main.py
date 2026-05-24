@@ -1,12 +1,23 @@
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import streamlit as st
 import requests
 import re
 import traceback
 
-
-
-from vision_unlearning.benchmarks.I_care import domain_unlearning_algorithm, domain_task, domain_attribute, domain_entity, domain_model, domain_mp, domain_me, domain_s, domain_l, rt_name_to_class, rt_name_to_params
+from vision_unlearning.benchmarks.I_care import (
+    domain_unlearning_algorithm,
+    domain_task,
+    domain_attribute,
+    domain_entity,
+    domain_model,
+    domain_mp,
+    domain_me,
+    domain_s,
+    domain_l,
+    rt_name_to_class,
+    rt_name_to_params,
+    choose_metric_column_interference_per_entity,
+)
 
 
 
@@ -58,6 +69,31 @@ def request_rt_to_backend(template: str, model: str, task: str, params: Dict[str
     except Exception as e:
         st.error(f"Request failed: {e}")
         st.code(traceback.format_exc())
+
+
+def show_rt_graceful(template: str, model: str, task: str, params: Dict[str, Optional[str]]) -> None:
+    """Compute and display an RT, showing a yellow warning on any failure instead of an error."""
+    try:
+        with st.spinner("Loading..."):
+            response = requests.post(
+                "http://backend:80/v1/public-api-compute-rt",
+                json={
+                    "template": template,
+                    "params": {
+                        "model": model,
+                        "task": task,
+                        **params,
+                    },
+                },
+                timeout=180,
+            )
+        if response.status_code == 200:
+            fig, ax = rt_name_to_class[template].plot(response.json(), return_fig=True)
+            st.pyplot(fig)
+        else:
+            st.warning(f"Results not yet pre-computed (backend: {response.status_code}).")
+    except Exception:
+        st.warning("Results not yet pre-computed or backend unavailable.")
 
 st.set_page_config(
     page_title="Forgety — Machine Unlearning as a Service",
@@ -365,16 +401,157 @@ elif st.session_state.page == "Explore results":
         domain_task,
     )
 
+    # ------------------------------------------------------------------ #
+    # Helper: metric glosses for the five key interference metrics shown   #
+    # in Section B of the entity detail dialog.                            #
+    # ------------------------------------------------------------------ #
+    _KEY_METRICS: List[tuple] = [
+        ("Emitter average clip diff", "avg CLIP distance: target vs all retained concepts"),
+        ("Emitter worst interfered clip diff", "CLIP distance to the most interfered retained concept"),
+        ("Receiver average clip diff", "avg CLIP loss seen by retained concepts disturbed by this entity"),
+        ("Emitter minus receiver average clip diff", "net difference: self-degradation minus collateral damage"),
+        ("Embedding specificity ratio", "directional specificity in DINOv2 space (>1 = targeted forgetting)"),
+    ]
+
+    @st.dialog("Entity details", width="large")  # type: ignore[misc]
+    def show_details(row: Dict[str, Any], current_model: str, current_task: str) -> None:  # noqa: E501
+        """Richer entity detail panel with five sections:
+        A — Entity profile, B — Benchmark-computed metrics, Visual — RTs for all 3 methods,
+        D — Latent space profile (EmbeddingUnlearningProfile, distil),
+        C — Author-reported HF model card metrics, E — Provenance.
+        """
+        entity_name: str = row['name']
+        st.markdown(f"## {entity_name}")
+
+        # ----------------------------------------------------------------
+        # Section A — Entity Profile
+        # ----------------------------------------------------------------
+        st.subheader("Entity Profile")
+        profile_fields = {k: v for k, v in row.items() if not k.startswith('metric_') and k != 'name'}
+        if profile_fields:
+            profile_items = [{"Attribute": k, "Value": str(v)} for k, v in profile_fields.items() if v not in (None, "", "nan")]
+            if profile_items:
+                st.dataframe(profile_items, hide_index=True, use_container_width=True)
+            else:
+                st.info("No profile attributes available for this entity.")
+        else:
+            st.info("No profile attributes available for this entity.")
+
+        # ----------------------------------------------------------------
+        # Section B — Benchmark-computed metrics (all 3 methods)
+        # ----------------------------------------------------------------
+        st.subheader("Benchmark-computed metrics")
+        st.caption("Produced by the I-CARE benchmark (vision-unlearning). Raw metric names preserved for reproducibility.")
+        metric_cols: List[str] = [k for k in row.keys() if k.startswith('metric_')]
+        methods_display = [("distil", "FADE/distil"), ("munba", "Munba"), ("uce", "UCE")]
+        tab_labels = [label for _, label in methods_display]
+        tabs = st.tabs(tab_labels)
+        for tab, (method_key, _) in zip(tabs, methods_display):
+            with tab:
+                rows_b: List[Dict[str, str]] = []
+                for me_name, gloss in _KEY_METRICS:
+                    try:
+                        col_name = choose_metric_column_interference_per_entity(method_key, me_name, metric_cols)  # type: ignore[arg-type]
+                        val = row.get(col_name)
+                        val_str = f"{val:.4f}" if isinstance(val, float) else str(val) if val is not None else "—"
+                    except (ValueError, KeyError):
+                        col_name = me_name.lower().replace(" ", "_")
+                        val_str = "—"
+                    rows_b.append({"Metric": me_name, "Value": val_str, "Description": gloss})
+                st.dataframe(rows_b, hide_index=True, use_container_width=True)
+
+        # ----------------------------------------------------------------
+        # Visual — InterferenceVisualSummary for all 3 methods
+        # (hardcoded clip_diff; each in an expander)
+        # ----------------------------------------------------------------
+        st.subheader("Interference Visual Summary")
+        st.caption("All three unlearning methods, clip_diff interference metric.")
+        for method_key, method_label in methods_display:
+            with st.expander(f"{method_label}", expanded=False):
+                show_rt_graceful(
+                    template="InterferenceVisualSummary",
+                    model=current_model,
+                    task=current_task,
+                    params={
+                        "unlearning_algorithm": method_key,
+                        "interference_pair": "clip_diff",
+                        "entity": entity_name,
+                    },
+                )
+
+        # ----------------------------------------------------------------
+        # Section D — Latent Space Profile (EmbeddingUnlearningProfile, distil)
+        # ----------------------------------------------------------------
+        st.subheader("Latent Space Profile")
+        st.caption("Embedding-space shift for this entity after forgetting (FADE/distil method).")
+        with st.expander("Show latent space profile", expanded=False):
+            show_rt_graceful(
+                template="EmbeddingUnlearningProfile",
+                model=current_model,
+                task=current_task,
+                params={
+                    "unlearning_algorithm": "distil",
+                    "entity": entity_name,
+                },
+            )
+
+        # ----------------------------------------------------------------
+        # Section C — Author-reported metrics (from HF model card)
+        # ----------------------------------------------------------------
+        st.subheader("Author-reported metrics (from HF model card)")
+        st.caption(
+            "Self-reported metrics from the HuggingFace model card of the unlearned model. "
+            "Epistemologically distinct from the benchmark-computed metrics above — "
+            "discrepancies between sections are scientifically interesting."
+        )
+        hf_dataset_url = "https://huggingface.co/datasets/LeonardoBenitez/VisionUnlearningEvaluationTestbeds"
+        for method_key, method_label in methods_display:
+            with st.expander(f"HF model card — {method_label}", expanded=False):
+                try:
+                    hf_resp = requests.get(
+                        "http://backend:80/v1/public-api-entity-model-metrics",
+                        params={"task": current_task, "entity": entity_name, "unlearning_algorithm": method_key},
+                        timeout=30,
+                    )
+                    if hf_resp.status_code == 200:
+                        hf_metrics: Dict[str, Any] = hf_resp.json()
+                        if hf_metrics:
+                            for k, v in hf_metrics.items():
+                                st.markdown(f"- **{k}**: {v}")
+                        else:
+                            st.warning("Model card metrics not yet available for this entity/method.")
+                    else:
+                        st.warning("Model card metrics not yet available for this entity/method.")
+                except Exception:
+                    st.warning("Could not reach backend for HF model card metrics.")
+                st.markdown(
+                    f"[View full dataset on HuggingFace ↗]({hf_dataset_url})",
+                    unsafe_allow_html=False,
+                )
+
+        # ----------------------------------------------------------------
+        # Section E — Provenance
+        # ----------------------------------------------------------------
+        with st.expander("How this was computed"):
+            st.markdown(
+                "**Benchmark-computed metrics** (Sections A and B) are produced by the "
+                "[I-CARE benchmark](https://huggingface.co/datasets/LeonardoBenitez/VisionUnlearningEvaluationTestbeds) "
+                "using the `vision_unlearning.benchmarks.I_care` package. "
+                "The interference-per-entity computation runs `InterferencePerEntity(task=...).compute()`, "
+                "which measures CLIP-based image quality changes across the forget and retain sets for every "
+                "entity pair. DINOv2 embeddings are used for the latent space specificity ratio. "
+                "All generated images and pre-computed results are stored in the HuggingFace dataset above."
+            )
+
     try:
-        with st.spinner("Sending request..."):
+        with st.spinner("Loading results..."):
             response = requests.get(
                 "http://backend:80/v1/public-api-read-interference-per-entity-all",
                 timeout=60,
             )
         if response.status_code == 200:
-            #st.success("Request sent successfully!")
             data = response.json()[task.lower()]
-            
+
             event = st.dataframe(
                 data,
                 on_select="rerun",
@@ -382,24 +559,9 @@ elif st.session_state.page == "Explore results":
             )
 
             selected_rows = event.selection.rows
-
             if selected_rows:
                 row = data[selected_rows[0]]
-
-                @st.dialog("Details")
-                def show_details():
-                    request_rt_to_backend(
-                        template="InterferenceVisualSummary",
-                        model=model,
-                        task=task,
-                        params={
-                            "unlearning_algorithm": "distil",  # hardcoded...
-                            "interference_pair": "clip_diff",  # hardcoded...
-                            "entity": row['name'],
-                        }
-                    )
-
-                show_details()
+                show_details(row, model, task)
         else:
             st.error(f"Backend error: {response.status_code} - {response.text}")
     except Exception as e:
