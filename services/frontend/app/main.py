@@ -409,7 +409,7 @@ elif st.session_state.page == "Explore results":
         ("Emitter average clip diff", "avg CLIP distance: target vs all retained concepts"),
         ("Emitter worst interfered clip diff", "CLIP distance to the most interfered retained concept"),
         ("Receiver average clip diff", "avg CLIP loss seen by retained concepts disturbed by this entity"),
-        ("Emitter minus receiver average clip diff", "net difference: self-degradation minus collateral damage"),
+        ("Emitter minus receiver average clip diff", "target forgetting effect minus collateral interference"),
         ("Embedding specificity ratio", "directional specificity in DINOv2 space (>1 = targeted forgetting)"),
     ]
 
@@ -534,7 +534,7 @@ elif st.session_state.page == "Explore results":
         # ----------------------------------------------------------------
         with st.expander("How this was computed"):
             st.markdown(
-                "**Benchmark-computed metrics** (Sections A and B) are produced by the "
+                "**Benchmark-computed metrics** (Section B) and the latent space profile (Section D) are produced by the "
                 "[I-CARE benchmark](https://huggingface.co/datasets/LeonardoBenitez/VisionUnlearningEvaluationTestbeds) "
                 "using the `vision_unlearning.benchmarks.I_care` package. "
                 "The interference-per-entity computation runs `InterferencePerEntity(task=...).compute()`, "
