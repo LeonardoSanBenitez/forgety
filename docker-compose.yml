@@ -40,3 +40,24 @@ services:
       - PYTHONPATH=/src:/vision_unlearning_src
     ports:
       - 8501:80
+
+  mcp:
+    container_name: platform-mcp
+    build:
+      context: .
+      dockerfile: ./services/mcp/Dockerfile
+    command: ["python", "app/server.py"]
+    volumes:
+      - ./services/mcp/app:/src/app
+      - ./assets:/src/assets
+      - ./libs:/src/libs
+      # vision-unlearning is not yet installed as a package; mount the source tree directly.
+      # TODO: remove this mount once vision-unlearning is published and installed via pip.
+      - ../vision-unlearning:/vision_unlearning_src
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/src:/vision_unlearning_src
+      - HF_HUB_ETAG_TIMEOUT=120
+    ports:
+      - 8002:80

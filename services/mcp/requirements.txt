@@ -1,0 +1,6 @@
+mcp>=1.9.0
+uvicorn[standard]
+
+mypy
+pycodestyle
+pytest
