@@ -1,4 +1,4 @@
-# Forgetsy
+# Forgety
 
 A web platform to democratize Machine Unlearning. Quick demo of the Forgetsy web UI in action:
 
