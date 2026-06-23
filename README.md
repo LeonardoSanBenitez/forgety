@@ -2,11 +2,11 @@
 
 A web platform to democratize Machine Unlearning. Quick demo of the Forgetsy web UI in action:
 
-![Forgetsy demo](./images/demo.gif)
+![Forgetsy demo](./images/demo_unlearn.gif)
 
 It enables experimenting with unlearning in a no-code manner, enabling a broader public (such as policy-makers, philosofers, among others) to exlore the benefits and shortcomings of Machine Unlearning.
 
-It is built fully on top of the [Vision Unlearning](https://github.com/LeonardoSanBenitez/vision-unlearning) library.
+It is built fully on top of the [Vision Unlearning](https://github.com/LeonardoSanBenitez/vision-unlearning) library, and the benchmark exploration feature is compatible with any HuggingFace repository whose structure follows Appendix 2 of I-CARE paper.
 
 
 # Getting started
@@ -31,7 +31,7 @@ It should be included in both in your local folder and in server's clone.
 See `.env.template` for their format
 
 ## Server setup
-Currently, only a Slurm cluster is supported to execute the jobs.
+For executing new unlearning sessions, it is needed to configure a server (that will perform the actual job erxecution). Currently, only a Slurm cluster is supported.
 
 Our setup was tested in the PPKE's ITK HPC cluster (Esztergom) in December of 2025, with the following configurations:
 * Tesla V100-PCIE-16GB with CUDA Version: 12.6
