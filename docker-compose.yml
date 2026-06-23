@@ -7,7 +7,8 @@ services:
     command: ["/bin/sh", "-c", "service ssh start && exec uvicorn app.main:app --host 0.0.0.0 --port 80 --reload"]
     volumes:
       - ./services/backend/app:/src/app
-      - ./assets:/src/assets
+      # - ./assets:/src/assets
+      - ../vision-unlearning/vision_unlearning/benchmarks/I_care/assets:/src/assets
       - ./libs:/src/libs
       - ./tests:/tests
       # vision-unlearning is not yet installed as a package; mount the source tree directly.
@@ -49,7 +50,7 @@ services:
     command: ["python", "app/server.py"]
     volumes:
       - ./services/mcp/app:/src/app
-      - ./assets:/src/assets
+      - ../vision-unlearning/vision_unlearning/benchmarks/I_care/assets:/src/assets
       - ./libs:/src/libs
       # vision-unlearning is not yet installed as a package; mount the source tree directly.
       # TODO: remove this mount once vision-unlearning is published and installed via pip.
