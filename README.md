@@ -2,7 +2,6 @@
 
 A web platform to democratize Machine Unlearning. Quick demo of the Forgetsy web UI in action (respectively exploring the results of a benchmark and running a new unlearnign session):
 
-
 ![Forgetsy demo](./images/demo_rt.gif)
 
 ![Forgetsy demo](./images/demo_unlearn.gif)
@@ -29,9 +28,8 @@ Credentials are stored in a git-ignored .env file. The same file should be prese
 * infra/.env: Needed because the HF credential is exposed to the code running in the cluster, allowing upload.
 * services/backend/app/.env: Needed for backend to connect to slurm
 
-It should be included in both in your local folder and in server's clone.
+The slurm-related secrets are only needed if you want to run unlearning sessions. They should be included in both in your local folder and in server's clone. See `.env.template` for their format.
 
-See `.env.template` for their format
 
 ## Server setup
 For executing new unlearning sessions, it is needed to configure a server (that will perform the actual job erxecution). Currently, only a Slurm cluster is supported.
