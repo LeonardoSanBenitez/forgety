@@ -1,6 +1,9 @@
 # Forgetsy
 
-A web platform to democratize Machine Unlearning. Quick demo of the Forgetsy web UI in action:
+A web platform to democratize Machine Unlearning. Quick demo of the Forgetsy web UI in action (respectively exploring the results of a benchmark and running a new unlearnign session):
+
+
+![Forgetsy demo](./images/demo_rt.gif)
 
 ![Forgetsy demo](./images/demo_unlearn.gif)
 
