@@ -68,13 +68,18 @@ def tmp_db(tmp_path: object) -> DatabaseLocalJson:
 
 
 @pytest.fixture
-def client(tmp_db: DatabaseLocalJson) -> Generator[TestClient, None, None]:
-    """TestClient with InfraFake + ephemeral DatabaseLocalJson."""
+def client(tmp_db: DatabaseLocalJson, tmp_path: object, monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient, None, None]:
+    """TestClient with InfraFake + ephemeral DatabaseLocalJson.
+
+    FADE zip extraction writes under FORGETY_REQUESTS_DIR (default /requests, a bind
+    mount in Docker); tests redirect it to an ephemeral directory so they also run on
+    hosts/CI runners where the filesystem root is not writable."""
     fake_infra = InfraFake()
     app.dependency_overrides[get_database] = lambda: tmp_db
     app.dependency_overrides[get_infra] = lambda: fake_infra
-    # Ensure /requests/ exists inside the container for FADE zip extraction
-    os.makedirs('/requests', exist_ok=True)
+    requests_dir = os.path.join(str(tmp_path), "requests")
+    os.makedirs(requests_dir, exist_ok=True)
+    monkeypatch.setenv("FORGETY_REQUESTS_DIR", requests_dir)
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

@@ -22,6 +22,23 @@ then go to `http://localhost:8501`
 
 See also the backend documentation at at `http://localhost:8001/docs`. 
 
+## Testing
+Tests run automatically on GitHub Actions for every push and pull request (`.github/workflows/test.yml`): mypy, pycodestyle, and the offline pytest suite (backend API tests, I-CARE route tests, and Streamlit UI tests via `streamlit.testing.v1.AppTest` — no browser or running backend needed).
+
+To run them locally:
+
+```bash
+make test          # inside Docker (mypy + pycodestyle + offline pytest)
+```
+
+or on the host, with the dependencies from `services/backend/requirements.txt`, `services/frontend/requirements.txt`, `libs/requirements.txt` and `libs/requirements.dev.txt` installed, and a checkout of [vision-unlearning](https://github.com/LeonardoSanBenitez/vision-unlearning) as a sibling directory of this repository:
+
+```bash
+python -m pytest tests -m "not gpu and not integration"
+```
+
+Tests marked `integration` download real I-CARE data from HuggingFace; they are excluded from all default runs and executed weekly (or on demand) by `.github/workflows/integration.yml`.
+
 ## Secret management
 Credentials are stored in a git-ignored .env file. The same file should be present in different locations:
 * .env
