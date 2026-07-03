@@ -80,8 +80,10 @@ async def create_request(
             raise HTTPException(status_code=400, detail="Uploaded file must be a .zip archive.")
         dataset_filename: str = dataset.filename  # narrowed from Optional[str]
 
-        # Create folder structure for the request
-        data_path = os.path.join("/requests", str(identifier), "data")
+        # Create folder structure for the request. The root directory is /requests (a
+        # bind mount in the Docker deployment) but can be overridden for environments
+        # where the filesystem root is not writable (e.g. tests on a CI runner).
+        data_path = os.path.join(os.environ.get("FORGETY_REQUESTS_DIR", "/requests"), str(identifier), "data")
         zip_location = os.path.join(data_path, dataset_filename)
         forget_path = os.path.join(data_path, "forget")
         retain_path = os.path.join(data_path, "retain")
