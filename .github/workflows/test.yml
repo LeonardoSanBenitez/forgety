@@ -1,0 +1,74 @@
+name: test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    env:
+      # vision-unlearning is not installed as a package (see docker-compose.yml); it is
+      # checked out as a sibling of the forgety checkout, mirroring the local repo layout
+      # and the container's /vision_unlearning_src mount. PYTHONPATH makes it importable
+      # for pytest and resolvable (as an untyped package) for mypy, exactly as in Docker.
+      PYTHONPATH: ${{ github.workspace }}/vision-unlearning
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: forgety
+
+      - uses: actions/checkout@v4
+        with:
+          repository: LeonardoSanBenitez/vision-unlearning
+          ref: dev
+          path: vision-unlearning
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: |
+            forgety/services/backend/requirements.txt
+            forgety/services/frontend/requirements.txt
+            forgety/libs/requirements.txt
+            forgety/libs/requirements.dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            -r forgety/services/backend/requirements.txt \
+            -r forgety/libs/requirements.txt \
+            -r forgety/libs/requirements.dev.txt \
+            -r forgety/services/frontend/requirements.txt
+
+      # The mypy/pycodestyle invocations below mirror the Makefile's `make test` target
+      # (same flags, same scope). Keep them in sync with the Makefile.
+      - name: Mypy (libs)
+        working-directory: forgety
+        run: mypy libs --no-warn-incomplete-stub --disable-error-code import-untyped --explicit-package-bases --install-types --non-interactive --exclude vision_unlearning_benchmarks_I_care_TEMP
+
+      - name: Mypy (backend)
+        working-directory: forgety
+        run: mypy services/backend/app --no-warn-incomplete-stub --disable-error-code import-untyped --explicit-package-bases --install-types --non-interactive
+
+      - name: Pycodestyle (libs)
+        working-directory: forgety
+        run: pycodestyle --exclude='.venv,docs,.runs' --max-line-length=200 --ignore='E121,E123,E126,E226,E24,E251,E704,W503,W504,E225,E226,E252,W605,E721,E731,E265,E266,E261,E262,E302,E303,E305,E402,E501,E741,E221,E227,W291,W293' libs
+
+      - name: Pycodestyle (backend)
+        working-directory: forgety
+        run: pycodestyle --exclude='.venv,docs,.runs' --max-line-length=200 --ignore='E121,E123,E126,E226,E24,E251,E704,W503,W504,E225,E226,E252,W605,E721,E731' services/backend/app
+
+      # Offline suite: backend API tests, I-CARE route tests, and the Streamlit UI tests
+      # (AppTest, in-process, mocked HTTP -- no browser, no backend, no network).
+      - name: Pytest (offline)
+        working-directory: forgety
+        run: python -m pytest tests -m "not gpu and not integration"

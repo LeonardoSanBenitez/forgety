@@ -39,9 +39,11 @@ test: run-local
 	docker compose exec backend sh -c "pycodestyle --exclude='.venv,docs,.runs' --max-line-length=200 --ignore='E121,E123,E126,E226,E24,E251,E704,W503,W504,E225,E226,E252,W605,E721,E731' /src/app"
 
 	# Default pytest run excludes GPU tests (GitHub Actions has no GPU; also
-	# keeps the suite fast). Use `make test-gpu` to run GPU-marked tests.
+	# keeps the suite fast) and integration tests (they download real I-CARE
+	# data from HuggingFace; run by the scheduled integration workflow or
+	# explicitly via `pytest -m integration`).
 	echo "\n\n-------\nPytest checks (CPU, fast)\n-------"
-	docker compose exec backend sh -c "python3 -m pytest /tests -m 'not gpu'"
+	docker compose exec backend sh -c "python3 -m pytest /tests -m 'not gpu and not integration'"
 
 test-gpu: run-local
 	echo "\n\n-------\nPytest checks (GPU-only)\n-------"
