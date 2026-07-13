@@ -1,13 +1,31 @@
 name: integration
 
-# Integration tests against the REAL I-CARE data on HuggingFace. They guard against
-# drift in the published data/schema, which moves slowly -- so they run on a weekly
-# schedule (and on demand), never per-push: a per-push non-blocking job becomes noise
-# that everyone learns to ignore, and a network hiccup must never redden a commit.
+# Integration tests against the REAL I-CARE data on HuggingFace. They exist to catch
+# drift in the PUBLISHED DATA'S STRUCTURE (entity listing shape, RT result schema) that
+# no offline test can see -- not to check the data's completeness or freshness, and not
+# a substitute for the offline suite, which already covers the code exhaustively. This
+# is why the fixture is a single small task slice (people, ~100 entities) rather than
+# the full dataset: we are testing our own code's contract with the data shape, not
+# auditing HuggingFace.
+#
+# Runs on a schedule (and on demand), never per-push: a per-push non-blocking job
+# becomes noise that everyone learns to ignore, and a network hiccup must never redden
+# a commit. Monthly, not weekly: the failure mode this guards against (a schema change
+# on the HF side) moves slowly, and this project has hit it a handful of times over
+# months, not weeks -- weekly was unnecessary insurance cost.
+#
+# On failure, a GitHub issue is filed (or commented on, if the last one is still open)
+# instead of relying on someone happening to check the Actions tab -- a scheduled job
+# nobody looks at again is worth nothing. Owner: priya (repo infra), the only automated
+# consumer of this signal today.
 on:
   schedule:
-    - cron: "0 6 * * 1"  # every Monday 06:00 UTC
+    - cron: "0 6 1 * *"  # 1st of every month, 06:00 UTC
   workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   integration:
@@ -46,3 +64,20 @@ jobs:
       - name: Pytest (HuggingFace integration)
         working-directory: forgety
         run: python -m pytest tests -m integration
+
+      - name: File or update an issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          EXISTING=$(gh issue list --repo "${{ github.repository }}" --label integration-drift --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --repo "${{ github.repository }}" --body "Still failing: $RUN_URL"
+          else
+            gh issue create --repo "${{ github.repository }}" \
+              --title "HuggingFace integration tests failing (structural drift)" \
+              --label integration-drift \
+              --body "The scheduled integration workflow failed against the real published I-CARE data. This means either the HF-hosted data schema changed, or a genuine regression slipped past the offline suite. Run: $RUN_URL"
+          fi
