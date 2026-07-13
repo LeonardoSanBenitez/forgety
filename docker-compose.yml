@@ -14,8 +14,13 @@ services:
       # vision-unlearning is not yet installed as a package; mount the source tree directly.
       # TODO: remove this mount once vision-unlearning is published and installed via pip.
       - ../vision-unlearning:/vision_unlearning_src
+    # .env is optional: a fresh clone with no .env at all works fine for
+    # run-RT/list-entities (no secrets needed for read-only, anonymous HF access).
+    # Only Slurm-dependent features (run-unlearning-session) need real secrets --
+    # see README's "Additional setup for running unlearning sessions" section.
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       - PYTHONPATH=/src:/vision_unlearning_src
       - HF_HUB_ETAG_TIMEOUT=120
@@ -35,8 +40,10 @@ services:
       # vision-unlearning is not yet installed as a package; mount the source tree directly.
       # TODO: remove this mount once vision-unlearning is published and installed via pip.
       - ../vision-unlearning:/vision_unlearning_src
+    # .env is optional -- see note on the backend service above.
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       - PYTHONPATH=/src:/vision_unlearning_src
     ports:
@@ -55,8 +62,10 @@ services:
       # vision-unlearning is not yet installed as a package; mount the source tree directly.
       # TODO: remove this mount once vision-unlearning is published and installed via pip.
       - ../vision-unlearning:/vision_unlearning_src
+    # .env is optional -- see note on the backend service above.
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       - PYTHONPATH=/src:/vision_unlearning_src
       - HF_HUB_ETAG_TIMEOUT=120
