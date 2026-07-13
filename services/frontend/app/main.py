@@ -1,3 +1,5 @@
+import libs.env  # normalizes HF_TOKEN before any import below can read it; see libs/env.py
+
 from typing import List, Dict, Optional, Any
 import streamlit as st
 import requests

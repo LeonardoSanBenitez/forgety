@@ -14,6 +14,8 @@ Claude Desktop config (via mcp-remote):
       }
     }
 """
+import libs.env  # normalizes HF_TOKEN before any import below can read it; see libs/env.py
+
 import inspect
 import io
 import json

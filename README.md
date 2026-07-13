@@ -12,15 +12,50 @@ It is built fully on top of the [Vision Unlearning](https://github.com/LeonardoS
 
 
 # Getting started
-Run in the terminal, from the root folder:
 
-```bash
-docker compose up
-```
+## Common setup (exploring benchmarks: listing entities, running Result Templates)
+This path needs **no `.env` file and no secrets at all** — forgety reads benchmark data
+from a public HuggingFace repository anonymously.
 
-then go to `http://localhost:8501`
+1. Clone this repository and [vision-unlearning](https://github.com/LeonardoSanBenitez/vision-unlearning)
+   as sibling directories — `docker-compose.yml`'s bind mounts require exactly this layout:
+   ```
+   parent/
+   ├── forgety/            (this repository)
+   └── vision-unlearning/
+   ```
+   (`vision-unlearning` is not installed as a Python package today; it's mounted directly
+   from the sibling checkout. See the `TODO` comments in `docker-compose.yml` — publishing
+   it to PyPI and dropping the mount is a separate, bigger task.)
+2. From `forgety/`, run:
+   ```bash
+   docker compose up
+   ```
+3. Go to `http://localhost:8501`. Backend docs are at `http://localhost:8001/docs`.
 
-See also the backend documentation at at `http://localhost:8001/docs`. 
+This is also the starting point for running unlearning sessions (Slurm), below — that
+path is a strict superset of this one, needing real credentials on top of it.
+
+## Additional setup for running unlearning sessions (Slurm)
+Running a *new* unlearning session (as opposed to exploring existing benchmark results)
+needs real credentials: a HuggingFace token, to upload the resulting model, and
+SSH/Slurm credentials, to submit the job to a cluster. Currently only a Slurm cluster is
+supported as the execution backend.
+
+1. Copy `.env.template` to `.env` and fill in `HF_TOKEN` plus the SSH/Slurm variables
+   (see the template for the exact keys expected).
+2. The same `.env` content is needed in three locations, all git-ignored:
+   * `.env` — used by `docker compose` (via `env_file`) for the services running locally.
+   * `infra/.env` — needed because the HF credential must also be available to the code
+     that runs *on the cluster*, to allow uploading the resulting model.
+   * `services/backend/app/.env` — needed for the backend to connect to Slurm.
+3. Server-side setup: a server must be configured to actually execute the job (currently
+   only Slurm clusters are supported). Our setup was tested on the PPKE's ITK HPC cluster
+   (Esztergom) in December 2025, with:
+   * Tesla V100-PCIE-16GB with CUDA Version: 12.6
+   * Slurm 23.11.4
+   * RHEL/CentOS/Fedora 8.10 (Green Obsidian)
+   * vision-unlearning 0.1.6 with Python 3.10
 
 ## Testing
 Tests run automatically on GitHub Actions for every push and pull request (`.github/workflows/test.yml`): mypy, pycodestyle, and the offline pytest suite (backend API tests, I-CARE route tests, and Streamlit UI tests via `streamlit.testing.v1.AppTest` — no browser or running backend needed).
@@ -38,24 +73,6 @@ python -m pytest tests -m "not gpu and not integration"
 ```
 
 Tests marked `integration` download real I-CARE data from HuggingFace; they are excluded from all default runs and executed weekly (or on demand) by `.github/workflows/integration.yml`.
-
-## Secret management
-Credentials are stored in a git-ignored .env file. The same file should be present in different locations:
-* .env
-* infra/.env: Needed because the HF credential is exposed to the code running in the cluster, allowing upload.
-* services/backend/app/.env: Needed for backend to connect to slurm
-
-The slurm-related secrets are only needed if you want to run unlearning sessions. They should be included in both in your local folder and in server's clone. See `.env.template` for their format.
-
-
-## Server setup
-For executing new unlearning sessions, it is needed to configure a server (that will perform the actual job erxecution). Currently, only a Slurm cluster is supported.
-
-Our setup was tested in the PPKE's ITK HPC cluster (Esztergom) in December of 2025, with the following configurations:
-* Tesla V100-PCIE-16GB with CUDA Version: 12.6
-* Slurm 23.11.4
-* Rhel centos fedora 8.10 (Green Obsidian)
-* Vision-unlearning 0.1.6 with python 3.10
 
 ## Tech stack
 * **Automation and devops**: Docker, makefile, mypi, PEP8, pytest, pypi, readthedocs, git, github (issues and task board)
