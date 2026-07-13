@@ -6,7 +6,7 @@ import that might read ``HF_TOKEN`` -- including the ``vision_unlearning`` impor
 follow it. A plain ``import libs.env`` is enough: the normalization below runs as an
 import-time side effect, no explicit function call needed at each call site.
 
-Why this exists (PLAN-TASK-2026-07-13-ColleagueOnboarding, issue 3):
+Why this exists:
 Docker's ``env_file`` sets a container env var verbatim from ``.env``. A colleague who
 copies ``.env.template`` as-is (the only documented action today) gets ``HF_TOKEN=``,
 which becomes an *empty string* in the container environment, not "unset". Downstream,

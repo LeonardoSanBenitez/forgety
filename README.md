@@ -14,16 +14,8 @@ It is built fully on top of the [Vision Unlearning](https://github.com/LeonardoS
 # Getting started
 
 ## Common setup (exploring benchmarks: listing entities, running Result Templates)
-This path is *intended* to need **no `.env` file and no secrets at all** — forgety reads
-benchmark data from a public HuggingFace repository anonymously.
-
-> **Known open issue (as of this writing):** for any entity/task whose data isn't already
-> cached locally, listing entities currently still fails with `Illegal header value
-> b'Bearer '`, even with zero `.env`. Root cause is a `token=hf_token or ""` pattern in
-> vision-unlearning (`metadata.py`, `result_templates.py`, `testbed.py`) that discards a
-> correctly-`None` token right before the HF download call. Tracked in
-> `PLAN-TASK-2026-07-13-ColleagueOnboarding.md`; remove this note once fixed and
-> re-verified end to end.
+This path needs **no `.env` file and no secrets at all** — forgety reads benchmark data
+from a public HuggingFace repository anonymously.
 
 1. Clone this repository and [vision-unlearning](https://github.com/LeonardoSanBenitez/vision-unlearning)
    as sibling directories — `docker-compose.yml`'s bind mounts require exactly this layout:
