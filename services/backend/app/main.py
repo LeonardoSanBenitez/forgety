@@ -28,7 +28,7 @@ def get_infra() -> Infra:
 
 
 @app.post("/v1/public-api-create-request")
-async def create_request(
+def create_request(  # def, not async: unzip + infra.launch do blocking I/O (see compute_rt)
     customer_id: str = Form(...),
     experiment_name: str = Form(...),
     model_base_name: str = Form(...),
@@ -130,10 +130,17 @@ async def create_request(
 
 
 @app.post("/v1/public-api-compute-rt")
-async def compute_rt(template: str = Body(...), params: dict = Body(...)) -> dict:
+def compute_rt(template: str = Body(...), params: dict = Body(...)) -> dict:
     """
     Compute and return resulting data (as returned by the compute method of the
     corresponding ResultTemplate subclass) as a JSON response.
+
+    Declared with ``def`` (not ``async def``) on purpose: ``rt.compute()`` is fully
+    synchronous and can block for a long time (HuggingFace downloads, CPU-bound
+    metric computation). A blocking call inside an ``async`` path operation would
+    stall uvicorn's event loop and freeze every other request; FastAPI instead runs
+    a ``def`` path operation in its worker threadpool, so concurrent requests (and
+    the several RTs the Explore-results page fires at once) proceed independently.
     """
     rt = rt_name_to_class[template](**convert_params_from_gui_to_backend(params))
     data = rt.compute()
@@ -141,7 +148,7 @@ async def compute_rt(template: str = Body(...), params: dict = Body(...)) -> dic
 
 
 @app.get("/v1/public-api-read-interference-per-entity-all")
-async def read_results() -> dict:
+def read_results() -> dict:  # def, not async: InterferencePerEntity.compute() is blocking (see compute_rt)
     data: Dict[type_task, List[Dict[str, Any]]] = {}
     for task in list(type_task.__args__):  # type: ignore[attr-defined]
         data[task] = InterferencePerEntity(task=task).compute()
@@ -149,7 +156,7 @@ async def read_results() -> dict:
 
 
 @app.post("/v1/test-launch")
-async def test_launch(
+def test_launch(  # def, not async: infra.launch/status do blocking I/O (see compute_rt)
     database: Database = Depends(get_database),
     infra: Infra = Depends(get_infra),
 ) -> str:
@@ -173,7 +180,7 @@ async def test_launch(
 
 
 @app.get("/v1/test-read")
-async def test_read(
+def test_read(  # def, not async: DB read + infra.status do blocking I/O (see compute_rt)
     uuid: str,
     database: Database = Depends(get_database),
     infra: Infra = Depends(get_infra),
@@ -189,7 +196,7 @@ async def test_read(
 
 
 @app.get("/v1/public-api-read-requests")
-async def read_incidents(
+def read_incidents(  # def, not async: DB reads + infra.status do blocking I/O (see compute_rt)
     customer_id: str,
     database: Database = Depends(get_database),
     infra: Infra = Depends(get_infra),
@@ -222,7 +229,7 @@ async def availability_test() -> int:
 
 
 @app.get("/v1/public-api-entity-model-metrics")
-async def entity_model_metrics(
+def entity_model_metrics(  # def, not async: huggingface_get_model_metrics does blocking network I/O (see compute_rt)
     task: str,
     entity: str,
     unlearning_algorithm: str,
