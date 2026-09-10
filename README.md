@@ -93,3 +93,16 @@ Tests marked `integration` download real I-CARE data from HuggingFace; they are 
 ![class-infra.png](./images/UML-diagrams-class-infra.png)
 
 ![class-request.png](./images/UML-diagrams-class-request.png)
+
+# Citation
+```
+@misc{pereira2026icare
+      title={I-CARE: Analysis of interference-related phenomena in a controllable, diverse and representative unlearning setting for text-to-image models}, 
+      author={Leonardo Santiago Benitez Pereira and Marcos Escudero Viñolo and Luis Herranz Arribas},
+      year={2026},
+      eprint={2609.00003},
+      archivePrefix={arXiv},
+      primaryClass={cs.AI},
+      url={https://arxiv.org/abs/2609.00003}, 
+}
+```
